@@ -1,0 +1,127 @@
+{
+  "groups": [
+    {
+      "name": "iap.agent",
+      "type": "com.instantaccessprovider.agent.config.AgentProperties",
+      "sourceType": "com.instantaccessprovider.agent.config.AgentProperties"
+    },
+    {
+      "name": "iap.agent.adapters",
+      "type": "com.instantaccessprovider.agent.config.AgentProperties$AdaptersProperties",
+      "sourceType": "com.instantaccessprovider.agent.config.AgentProperties",
+      "sourceMethod": "adapters()"
+    },
+    {
+      "name": "iap.agent.adapters.dirsync",
+      "type": "com.instantaccessprovider.agent.config.AgentProperties$DirsyncProperties",
+      "sourceType": "com.instantaccessprovider.agent.config.AgentProperties$AdaptersProperties",
+      "sourceMethod": "dirsync()"
+    },
+    {
+      "name": "iap.agent.adapters.syslog",
+      "type": "com.instantaccessprovider.agent.config.AgentProperties$SyslogProperties",
+      "sourceType": "com.instantaccessprovider.agent.config.AgentProperties$AdaptersProperties",
+      "sourceMethod": "syslog()"
+    },
+    {
+      "name": "iap.agent.adapters.webhook",
+      "type": "com.instantaccessprovider.agent.config.AgentProperties$WebhookProperties",
+      "sourceType": "com.instantaccessprovider.agent.config.AgentProperties$AdaptersProperties",
+      "sourceMethod": "webhook()"
+    },
+    {
+      "name": "iap.agent.adapters.wef",
+      "type": "com.instantaccessprovider.agent.config.AgentProperties$WefProperties",
+      "sourceType": "com.instantaccessprovider.agent.config.AgentProperties$AdaptersProperties",
+      "sourceMethod": "wef()"
+    }
+  ],
+  "properties": [
+    {
+      "name": "iap.agent.adapters.dirsync.base-dn",
+      "type": "java.lang.String",
+      "sourceType": "com.instantaccessprovider.agent.config.AgentProperties$DirsyncProperties"
+    },
+    {
+      "name": "iap.agent.adapters.dirsync.bind-dn",
+      "type": "java.lang.String",
+      "sourceType": "com.instantaccessprovider.agent.config.AgentProperties$DirsyncProperties"
+    },
+    {
+      "name": "iap.agent.adapters.dirsync.bind-password",
+      "type": "java.lang.String",
+      "sourceType": "com.instantaccessprovider.agent.config.AgentProperties$DirsyncProperties"
+    },
+    {
+      "name": "iap.agent.adapters.dirsync.enabled",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.instantaccessprovider.agent.config.AgentProperties$DirsyncProperties"
+    },
+    {
+      "name": "iap.agent.adapters.dirsync.ldap-url",
+      "type": "java.lang.String",
+      "sourceType": "com.instantaccessprovider.agent.config.AgentProperties$DirsyncProperties"
+    },
+    {
+      "name": "iap.agent.adapters.dirsync.poll-interval-seconds",
+      "type": "java.lang.Integer",
+      "sourceType": "com.instantaccessprovider.agent.config.AgentProperties$DirsyncProperties"
+    },
+    {
+      "name": "iap.agent.adapters.syslog.enabled",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.instantaccessprovider.agent.config.AgentProperties$SyslogProperties"
+    },
+    {
+      "name": "iap.agent.adapters.syslog.listen-port",
+      "type": "java.lang.Integer",
+      "sourceType": "com.instantaccessprovider.agent.config.AgentProperties$SyslogProperties"
+    },
+    {
+      "name": "iap.agent.adapters.syslog.protocol",
+      "type": "java.lang.String",
+      "sourceType": "com.instantaccessprovider.agent.config.AgentProperties$SyslogProperties"
+    },
+    {
+      "name": "iap.agent.adapters.syslog.source-id-field",
+      "type": "java.lang.String",
+      "sourceType": "com.instantaccessprovider.agent.config.AgentProperties$SyslogProperties"
+    },
+    {
+      "name": "iap.agent.adapters.webhook.enabled",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.instantaccessprovider.agent.config.AgentProperties$WebhookProperties"
+    },
+    {
+      "name": "iap.agent.adapters.webhook.listen-port",
+      "type": "java.lang.Integer",
+      "sourceType": "com.instantaccessprovider.agent.config.AgentProperties$WebhookProperties"
+    },
+    {
+      "name": "iap.agent.adapters.wef.channel-name",
+      "type": "java.lang.String",
+      "sourceType": "com.instantaccessprovider.agent.config.AgentProperties$WefProperties"
+    },
+    {
+      "name": "iap.agent.adapters.wef.enabled",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.instantaccessprovider.agent.config.AgentProperties$WefProperties"
+    },
+    {
+      "name": "iap.agent.adapters.wef.event-ids",
+      "type": "java.util.List<java.lang.Integer>",
+      "sourceType": "com.instantaccessprovider.agent.config.AgentProperties$WefProperties"
+    },
+    {
+      "name": "iap.agent.adapters.wef.source-id",
+      "type": "java.lang.String",
+      "sourceType": "com.instantaccessprovider.agent.config.AgentProperties$WefProperties"
+    },
+    {
+      "name": "iap.agent.instance-id",
+      "type": "java.lang.String",
+      "sourceType": "com.instantaccessprovider.agent.config.AgentProperties"
+    }
+  ],
+  "hints": []
+}

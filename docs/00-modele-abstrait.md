@@ -1,4 +1,4 @@
-# 00 — Modèle Abstrait IAM (Generic Identity & Access Model)
+# 00 — Modèle Abstrait IAM (Generic Identity & Access Model) InstantAccessProvider
 
 ## 1. Motivation
 
@@ -49,6 +49,10 @@ L'architecture initiale était centrée sur Active Directory. Mais les mêmes pr
 │              │ = memberOf AD   │                            │
 │              │ = User→Profil   │                            │
 │              │ = RoleBinding   │                            │
+│              │                 │                            │
+│              │ + scope?        │                            │
+│              │ (périmètre      │                            │
+│              │  métier optionnel)                           │
 │              └─────────────────┘                            │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -107,7 +111,7 @@ L'architecture initiale était centrée sur Active Directory. Mais les mêmes pr
 
 ### 2.3 Assignment
 
-> **Le lien effectif entre une Identity et un Entitlement, à un instant donné.**
+> **Le lien effectif entre une Identity et un Entitlement, à un instant donné, éventuellement restreint à un périmètre métier (scope).**
 
 | Champ | Type | Description |
 |---|---|---|
@@ -118,7 +122,47 @@ L'architecture initiale était centrée sur Active Directory. Mais les mêmes pr
 | `grantedBy` | Identity ref | Qui a fait l'affectation |
 | `grantedAt` | datetime | Horodatage de l'affectation |
 | `expiresAt` | datetime? | Date d'expiration (si applicable) |
+| `scope` | Scope? | **Optionnel** — Périmètre métier de l'affectation (voir §2.4) |
 | `metadata` | map | Champs additionnels libres |
+
+---
+
+### 2.4 Scope (optionnel)
+
+> **Un périmètre métier qui restreint l'exercice d'un Entitlement à une portion de données ou d'organisation.**
+
+Le scope n'est pas un Entitlement : il ne définit pas *ce qu'on peut faire*, il restreint *sur quoi on peut le faire*. Il est porté par l'Assignment, pas par l'Entitlement, car le même droit peut s'appliquer avec des périmètres différents selon les personnes.
+
+**Exemples concrets :**
+
+| Contexte | Entitlement | Scope |
+|---|---|---|
+| RH multinationale | `PROFIL_RH_MANAGER` | `region: EMEA` |
+| Gestion documentaire | `ACCES_CONTRATS` | `service: Direction Juridique` |
+| Application financière | `ROLE_VALIDEUR` | `entity: Filiale-FR-01` |
+| Active Directory | `Domain Admins` | *(pas de scope — s'applique au domaine entier)* |
+| Support N2 | `PROFIL_SUPPORT` | `country: FR`, `tier: premium` |
+
+**Structure du Scope :**
+
+| Champ | Type | Description |
+|---|---|---|
+| `type` | string | Type de dimension (`region`, `entity`, `service`, `country`, `tenant`…) |
+| `value` | string \| string[] | Valeur(s) du périmètre |
+| `label` | string? | Libellé lisible |
+
+Plusieurs dimensions peuvent être combinées dans un même scope :
+
+```json
+"scope": {
+  "dimensions": [
+    { "type": "region",  "value": "EMEA",              "label": "Europe, Moyen-Orient, Afrique" },
+    { "type": "entity",  "value": ["FR-01", "FR-02"],  "label": "Filiales France" }
+  ]
+}
+```
+
+> Le scope est **absent** lorsque l'Entitlement s'applique sans restriction de périmètre. Les consommateurs qui ne gèrent pas le scope doivent ignorer le champ sans erreur (rétrocompatibilité garantie).
 
 ---
 
@@ -148,40 +192,63 @@ ASSIGNMENT EVENTS
 
 ## 4. Architecture des sources (multi-source)
 
+Le principe fondamental : un **Agent Java stateless** embarque plusieurs **Adapters** (un par protocole de transport). Plusieurs instances de l'Agent tournent en parallèle pour la haute disponibilité.
+
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                    SOURCES                                   │
-│                                                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
-│  │  AD Adapter  │  │  App Adapter │  │ LDAP Adapter │  ...  │
-│  │              │  │  (REST/DB)   │  │  (DirSync)   │       │
-│  │ WEF + LDAP   │  │              │  │              │       │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘       │
-└─────────╪─────────────────╪─────────────────╪───────────────┘
-          │                  │                 │
-          │  Événements bruts, format propre à chaque source
-          │                  │                 │
-          ▼                  ▼                 ▼
-┌──────────────────────────────────────────────────────────────┐
-│               NORMALISATION (MAPPING LAYER)                  │
-│                                                              │
-│  Chaque adapter traduit ses événements natifs               │
-│  vers le modèle abstrait IAM (Identity/Entitlement/          │
-│  Assignment) et produit des CloudEvents typés iam.*          │
-└──────────────────────────────┬───────────────────────────────┘
-                               │
-                               ▼
-            ┌──────────────────────────────────┐
-            │  Topics Kafka (modèle générique) │
-            │                                  │
-            │  iam.raw.{sourceSystem}          │
-            │  iam.identity                    │
-            │  iam.entitlement                 │
-            │  iam.assignment                  │
-            │  iam.alert                       │
-            │  iam.audit                       │
-            └──────────────────────────────────┘
+[AD Domain Controllers]  ──[WEF]──────────────────────────►┐
+[ISVD / équipements]     ──[Syslog]──────────────────────►│
+[Serveurs Linux]         ──[Syslog / auditd]──────────────►│  AGENT
+[Applications]           ──[Webhook / REST / CDC]──────────►│  (Java, stateless)
+[OpenLDAP / Entra ID]    ──[DirSync / Graph API]───────────►│
+                                                         │
+                              ┌────────────────────────────┘
+                              │
+                   ┌─────────▼───────────┐
+                   │  Adapter WEF         │  (lit les EventID AD)
+                   │  Adapter Syslog      │  (parse RFC 5424 / CEF)
+                   │  Adapter Webhook     │  (reçoit les applis)
+                   │  Adapter DirSync     │  (polling LDAP fallback)
+                   └─────────┬───────────┘
+                              │
+                   ┌─────────▼───────────┐
+                   │  Normalizer          │  (mapping métier)
+                   └─────────┬───────────┘
+                              │
+              ┌────────────────────────┬─────────────────────────┬─────────────┐
+              ▼                        ▼                         ▼
+     iam.raw.activedirectory   iam.raw.syslog           iam.raw.{sourceId}
+
+     (plusieurs instances de l'Agent en parallèle pour la HA)
+     Agent-1 (Zone Tier-0)  ─────────►┐
+     Agent-2 (Zone Prod)    ─────────►│──► topics iam.raw.*
+     Agent-3 (Site London)  ─────────►┘
+
+               tous les topics raw iam.raw.*
+                           │
+              ┌──────────▼──────────┐
+              │  Stream Processor     │
+              │  (Kafka Streams)      │
+              └──────────┬──────────┘
+                           │
+      ┌──────────────┼──────────────┬──────────────┐
+      ▼              ▼              ▼              ▼
+[iam.identity] [iam.entitlement] [iam.assignment] [iam.alert]
+                                                  [iam.audit]
 ```
+
+**Responsabilités de l'Adapter (dans l'Agent) :**
+- Écoute un protocole source spécifique (WEF, Syslog, Webhook…)
+- Déduplique les événements avant publication
+- Publie dans `iam.raw.{sourceId}` en format natif brut — **sans logique métier**
+
+**Responsabilités du Normalizer (dans l'Agent) :**
+- Mappe les champs natifs vers `RawIamEvent`
+- Ajoute `sourceId`, `detectedAt`, `deduplicationKey`
+
+**Pourquoi un topic raw par source ?**
+- Rejouer une seule source sans toucher aux autres
+- Schémas bruts différents par source — pas de couplage
+- Isolation des pannes : un Adapter en erreur n'affecte pas les autres
 
 ---
 
@@ -195,7 +262,7 @@ Chaque système source doit s'enregistrer dans un **Source Registry** avant de p
   "sourceType": "activedirectory",
   "displayName": "Active Directory - corp.example.com",
   "domain": "corp.example.com",
-  "adapter": "ad-watcher-v2",
+  "collecteur": "collecteur-ad-v2",
   "entityMapping": {
     "identity": "user account",
     "entitlement": "security group",
@@ -214,7 +281,7 @@ Chaque système source doit s'enregistrer dans un **Source Registry** avant de p
   "sourceId": "app://app-a.example.com",
   "sourceType": "business-application",
   "displayName": "Application A — Gestion RH",
-  "adapter": "app-webhook-adapter-v1",
+  "collecteur": "collecteur-app-webhook-v1",
   "entityMapping": {
     "identity": "utilisateur applicatif",
     "entitlement": "profil applicatif",
@@ -287,7 +354,60 @@ Chaque système source doit s'enregistrer dans un **Source Registry** avant de p
 }
 ```
 
-### 6.2 Même événement — Application A (profil applicatif)
+### 6.2 Assignment avec scope — Application RH (exemple)
+
+```json
+{
+  "specversion": "1.0",
+  "id": "3e4f5a06-cd23-...",
+  "source": "app://sirh.example.com",
+  "type": "com.example.iam.assignment.added",
+  "time": "2026-04-03T09:15:00.000Z",
+  "iamsourcetype": "business-application",
+
+  "data": {
+    "assignment": {
+      "id": "c1d2e3f4-...",
+      "grantedAt": "2026-04-03T09:15:00.000Z",
+      "grantedBy": {
+        "externalId": "admin-rh-001",
+        "displayName": "Administrateur RH",
+        "sourceSystem": "app://sirh.example.com"
+      },
+      "scope": {
+        "dimensions": [
+          { "type": "region", "value": "EMEA", "label": "Europe, Moyen-Orient, Afrique" }
+        ]
+      }
+    },
+    "identity": {
+      "id": "a1b2c3d4-...",
+      "externalId": "emp-00789",
+      "sourceSystem": "app://sirh.example.com",
+      "type": "user",
+      "displayName": "Marie Dupont",
+      "metadata": { "email": "m.dupont@corp.example.com" }
+    },
+    "entitlement": {
+      "id": "b2c3d4e5-...",
+      "externalId": "profile-rh-manager",
+      "sourceSystem": "app://sirh.example.com",
+      "type": "app-profile",
+      "name": "PROFIL_RH_MANAGER",
+      "sensitivityLevel": "HIGH"
+    },
+    "context": {
+      "isOutsideBusinessHours": false,
+      "isPrivilegedEntitlement": true,
+      "sourceNativeEventId": "SIRH_ASSIGN_884421"
+    }
+  }
+}
+```
+
+> Sans le champ `scope`, l'affectation s'applique sans restriction de périmètre. L'absence de `scope` est un état valide et ne doit pas être interprété comme une erreur.
+
+### 6.3 Même événement — Application A (profil applicatif)
 
 ```json
 {
@@ -341,7 +461,7 @@ Chaque système source doit s'enregistrer dans un **Source Registry** avant de p
 }
 ```
 
-**Les deux événements ont le même `type`, le même schéma, les mêmes règles de détection SOC.**  
+**Les trois événements ont le même `type`, le même schéma, les mêmes règles de détection SOC.**  
 Seul `source` et `data.entitlement.type` différencient l'origine.
 
 ---

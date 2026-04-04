@@ -1,56 +1,109 @@
-# 11 — Adaptateurs Sources (Source Adapters)
+# 11 — Agent et Adapters (Source Collectors)
 
 ## 1. Principe
 
-Chaque système source dispose d'un **Adapter** dédié. L'Adapter est le seul composant qui connaît le format natif du système source. Il traduit vers le modèle abstrait IAM (Identity / Entitlement / Assignment) défini dans `docs/00-modele-abstrait.md`.
+La collecte est assurée par un **Agent Java stateless**. Un Agent embarque plusieurs **Adapters** — un par protocole de transport source. Plusieurs instances de l'Agent tournent en parallèle pour la haute disponibilité.
 
 ```
-Système Source ──► Adapter ──► iam.raw.{sourceSystem} ──► Normalizer ──► iam.identity
-                                                                          iam.entitlement
-                                                                          iam.assignment
+[Source]              [Transport]         [Agent]               [Topic raw]
+
+AD (DCs)         ──► WEF             ──► Adapter WEF      ──► iam.raw.activedirectory
+ISVD / équip.    ──► Syslog UDP/TLS  ──► Adapter Syslog   ──► iam.raw.syslog
+Serveurs Linux   ──► Syslog / auditd ──► Adapter Syslog   ──► iam.raw.syslog
+Applications     ──► Webhook / CDC   ──► Adapter Webhook  ──► iam.raw.{sourceId}
+OpenLDAP/Entra   ──► DirSync/GraphAPI──► Adapter LDAP     ──► iam.raw.ldap
+
+                       Normalizer (interne à l'Agent)
+                              │
+                              ▼
+                 iam.raw.* → Stream Processor → iam.identity / iam.assignment / ...
 ```
 
-L'interface de sortie est **identique** pour tous les adapters : un événement CloudEvents avec `type` en `com.example.iam.*`.
+**Séparation des responsabilités :**
+- L'**Adapter** écoute un protocole, déduplique, publie en format natif brut
+- Le **Normalizer interne** mappe vers `RawIamEvent` (champs communs)
+- Le **Stream Processor** (externe, Kafka Streams) applique la logique métier IAM
+
+L'interface de sortie est **identique** pour tous les Adapters : publication dans `iam.raw.{sourceId}`.
 
 ---
 
 ## 2. Interface contractuelle de l'Adapter
 
-Tout adapter doit implémenter le contrat suivant :
+Tout Adapter implémenté dans l'Agent doit respecter ce contrat :
 
-```typescript
-interface SourceAdapter {
-  // Identifiant unique du système source (ex: "ad://corp.example.com")
-  sourceId: string;
+```java
+// Interface Java — chaque Adapter implémente InputAdapter
+public interface InputAdapter {
 
-  // Type de source (pour le registre)
-  sourceType: "activedirectory" | "ldap" | "business-application" | "entra-id" | "aws-iam" | "custom";
+    // Identifiant du protocole (éx: "wef", "syslog", "webhook", "dirsync")
+    String adapterType();
 
-  // Démarrage de l'écoute / polling
-  start(): Promise<void>;
+    // Démarre l'écoute (non bloquant)
+    void start(AdapterConfig config, RawEventSink sink);
 
-  // Arrêt propre
-  stop(): Promise<void>;
-
-  // Callback de publication (injecté à l'initialisation)
-  onEvent: (event: RawIamEvent) => Promise<void>;
+    // Arrêt propre
+    void stop();
 }
 
-interface RawIamEvent {
-  sourceId: string;
-  sourceType: string;
-  nativeEventId: string;          // ID de l'événement dans le système source
-  nativePayload: unknown;         // Payload brut non transformé
-  detectedAt: string;             // ISO 8601
-  deduplicationKey: string;       // Clé pour déduplication (idempotence)
+// Callback injecté par l'Agent pour chaque événement collecté
+@FunctionalInterface
+public interface RawEventSink {
+    void accept(RawIamEvent event);
 }
+
+// Événement brut publié dans iam.raw.{sourceId}
+public record RawIamEvent(
+    String sourceId,          // ex: "ad://corp.example.com"
+    String sourceType,        // "activedirectory", "syslog", "ldap"...
+    String nativeEventId,     // ID natif dans la source
+    String nativePayload,     // Payload brut (JSON/XML/CEF non transformé)
+    String detectedAt,        // ISO 8601
+    String deduplicationKey   // SHA-256(sourceId + nativeEventId + timestamp/s)
+) {}
 ```
+
+### Configuration YAML de l'Agent
+
+```yaml
+# agent.yml — un seul fichier par instance, adapters activés = ceux listés
+agent:
+  instanceId: "agent-zone-tier0-paris"
+  kafkaBootstrapServers: "kafka-1:9092,kafka-2:9092"
+  kafkaTls: true
+
+adapters:
+  wef:
+    enabled: true
+    channelName: "ForwardedEvents"
+    eventIds: [4720, 4722, 4725, 4726, 4727, 4728, 4729, 4730,
+               4731, 4732, 4733, 4734, 4738, 4754, 4756, 4757, 4758, 4781]
+    sourceId: "ad://corp.example.com"
+
+  syslog:
+    enabled: true
+    listenPort: 6514
+    protocol: TLS
+    sourceIdField: "hostname"   # déduit le sourceId depuis le champ hostname
+
+  webhook:
+    enabled: false
+
+  dirsync:
+    enabled: true              # fallback si WEF défaillant
+    ldapUrl: "ldaps://dc-01.corp.example.com"
+    baseDn: "DC=corp,DC=example,DC=com"
+    bindDn: "CN=svc-dirsync,..."
+    pollIntervalSeconds: 15
+```
+
+> **Stateless** : l'Agent ne stocke aucun état persistant. Le cookie DirSync est stocké dans Redis ou un fichier monté en volume. Cela permet de lancer N instances sans coordination.
 
 ---
 
-## 3. AD Adapter (existant — remis en contexte générique)
+## 3. Adapter WEF (Active Directory)
 
-Voir `docs/03-collecte-ad.md` pour les détails.
+Voir `docs/03-collecte-ad.md` pour les détails complets (configuration WEC, DirSync, déduplication).
 
 **Mapping** :
 
@@ -65,38 +118,36 @@ Event ID 4738                 → type: iam.identity.updated
 
 ---
 
-## 4. Application Adapter (générique)
+## 4. Adapter Webhook / REST / CDC (Applications)
 
-### 4.1 Modes de collecte pour les applications
-
-Les applications tierces peuvent exposer leurs événements de plusieurs façons :
+> L'Adapter Webhook / REST / CDC de l'Agent gère les applications métier.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                  MODES DE COLLECTE APPLICATION                      │
 │                                                                     │
 │  Mode A — Webhook Push                                              │
-│  Application ──────────────────────► App Adapter                   │
-│  (POST HTTP sur endpoint dédié)       (valide + normalise)          │
+│  Application ──────────────────────► Collecteur App                │
+│  (POST HTTP sur endpoint dédié)       (reçoit + publie brut)        │
 │                                                                     │
 │  Mode B — Polling REST API                                          │
-│  App Adapter ──► GET /api/events?since=... ──► Application          │
+│  Collecteur App ──► GET /api/events?since=... ──► Application       │
 │  (toutes les X secondes)                                            │
 │                                                                     │
 │  Mode C — CDC Base de données                                       │
-│  App Adapter ──► Debezium/CDC ──► Tables métier de l'application    │
+│  Collecteur App ──► Debezium/CDC ──► Tables métier de l'application │
 │  (Kafka Connect CDC, Debezium)                                      │
 │                                                                     │
 │  Mode D — File / Message Queue existante                            │
-│  App Adapter ──► Lit queue existante (JMS, ActiveMQ, AMQP)         │
+│  Collecteur App ──► Lit queue existante (JMS, ActiveMQ, AMQP)      │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 4.2 Mode A — Webhook Push (recommandé pour les nouvelles apps)
 
-L'application publie ses événements en POST sur l'endpoint de l'App Adapter.
+L'application publie ses événements en POST sur l'endpoint du Collecteur App.
 
-**Endpoint App Adapter** :
+**Endpoint Collecteur App** :
 ```
 POST /api/v1/events/{sourceId}
 Authorization: Bearer {token}
@@ -119,10 +170,10 @@ L'application A envoie ses événements dans son format natif, par exemple :
 }
 ```
 
-**Configuration du mapping dans l'App Adapter** :
+**Configuration du mapping dans le Collecteur App** :
 
 ```yaml
-# adapter-config/app-a.yaml
+# collecteur-config/app-a.yaml
 sourceId: "app://app-a.example.com"
 sourceType: "business-application"
 displayName: "Application A — Gestion RH"
@@ -195,7 +246,7 @@ eventMappings:
 Pour les applications qui exposent une API `/events` ou `/audit-log` :
 
 ```yaml
-# adapter-config/app-legacy.yaml
+# collecteur-config/app-legacy.yaml
 sourceId: "app://legacy-app.example.com"
 sourceType: "business-application"
 polling:
@@ -281,7 +332,28 @@ Table: users
 
 ---
 
-## 5. LDAP Adapter (générique)
+## 5. Adapter Syslog (ISVD, Linux, équipements réseau)
+
+L'Adapter Syslog ouvre un serveur UDP/TCP/TLS et reçoit les messages CEF ou RFC 5424 envoyés par :
+- **ISVD** (Identity Store Virtualization Device)
+- **Serveurs Linux** via rsyslog ou syslog-ng
+- **Équipements réseau** (firewalls, switches) qui génèrent des événements IAM
+
+```yaml
+# Exemple rsyslog.conf côté Linux — envoi vers l'Agent
+*.auth;authpriv.*  @@agent-host:6514  # TCP
+# ou UDP :
+*.auth;authpriv.*  @agent-host:514
+```
+
+L'Adapter normalise chaque message Syslog en `RawIamEvent` avec :
+- `sourceId` : déduit du champ `hostname` du message
+- `nativePayload` : message Syslog brut (CEF ou RFC 5424)
+- `deduplicationKey` : SHA-256 de hostname + msgId + timestamp
+
+---
+
+## 6. Adapter LDAP / DirSync (OpenLDAP, AD fallback)
 
 ```yaml
 sourceId: "ldap://ldap.example.com"
@@ -301,7 +373,7 @@ ldap:
 
 ---
 
-## 6. Azure AD / Entra ID Adapter (v2 roadmap)
+## 7. Adapter Entra ID / Azure AD (v2 roadmap)
 
 Microsoft Graph API expose des **Change Notifications** (webhooks) et des **Delta Queries** pour capturer les changements en quasi-temps-réel.
 
