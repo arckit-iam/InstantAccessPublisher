@@ -215,7 +215,7 @@ DC-01 génère Event 4720 (création compte "john.doe")
 **Décision** : Un binaire Java unique, stateless, avec des Adapters configurables par YAML  
 **Raison** : Simplifie le déploiement et les mises à jour. Un seul processus à monitorer par instance. Le stateless permet de lancer N instances sans coordination.
 
-### ADR-003 — Multi-instances pour la HA
+### ADR-003 — Multi-instances pour la Haute Disponibilité
 **Décision** : Plusieurs instances de l'Agent en parallèle, Kafka assure la déduplication par clé de partition  
 **Raison** : Pas de SPOF sur la collecte. Si une instance tombe, les autres continuent. Pas besoin de coordination distribuée complexe entre les instances.
 

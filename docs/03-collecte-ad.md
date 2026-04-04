@@ -290,3 +290,243 @@ DC ──► WEF Buffer local ──► WEC Server ──► Queue locale ──
 - WEF : bufferisation locale sur chaque DC si le WEC est inaccessible (plusieurs heures)
 - AD Watcher : file d'attente en mémoire / disque avec retry exponentiel vers Kafka
 - DirSync : le cookie garantit la reprise depuis le dernier état connu
+
+---
+
+## 5. Architecture technique — Déploiement WEF + Collecteur + Agent
+
+### 5.1 Vue d'ensemble
+
+L'architecture de collecte AD repose sur trois niveaux distincts, chacun dans sa zone de sécurité :
+
+```
+[DC (Tier0)] ──WEF──► [Collecteur Windows (Tier1)] ──► [Agent Java (Ubuntu, Tier1)] ──► [Topic Kafka]
+[ISDS]       ──Syslog──────────────────────────────────► [Agent Java (Ubuntu, Tier1)] ──► [Topic Kafka]
+[Autres]     ──Syslog/API──────────────────────────────► [Agent Java (Ubuntu, Tier1)] ──► [Topic Kafka]
+```
+
+> **Règle fondamentale** : Ubuntu/Linux ne peut pas être un serveur WEC. WEF exige un collecteur Windows. L'Agent Java ne tourne donc pas sur le Collecteur Windows, mais sur un serveur Ubuntu distinct vers lequel les logs sont transférés.
+
+### 5.2 Contraintes techniques
+
+| Composant | Peut recevoir WEF ? | Peut être serveur WEC ? |
+|---|---|---|
+| Windows Server 2019/2022/2025 | ✔ Oui | ✔ Oui |
+| Ubuntu / Linux | ✗ Non | ✗ Non |
+
+👉 Le Collecteur Windows est **obligatoire** comme étape intermédiaire entre les DCs Tier0 et l'Agent Java Ubuntu.
+
+### 5.3 Rôle du Collecteur Windows (Tier1)
+
+Le **Collecteur WEF** (Windows Server 2025, membre du domaine, OU Tier1) :
+- Reçoit les événements WEF de tous les DCs via WS-Management (port 5985)
+- Stocke les événements dans le journal `ForwardedEvents`
+- Sert de tampon sécurisé entre Tier0 (DCs) et le reste de l'infrastructure
+- Transfère les événements vers l'Agent Java Ubuntu via **Filebeat**, NXLog ou une API directe
+
+**Spécifications recommandées :**
+
+| Ressource | Valeur |
+|---|---|
+| OS | Windows Server 2025 |
+| vCPU | 2 |
+| RAM | 4 Go |
+| Disque | 40 Go |
+| Réseau | Membre du domaine, OU Tier1 |
+
+### 5.4 Configuration WEF côté DCs
+
+#### Activer WinRM sur les DCs
+
+```powershell
+winrm quickconfig
+```
+
+#### Activer le service Event Collector (WEC)
+
+```powershell
+Set-Service Wecsvc -StartupType Automatic
+Start-Service Wecsvc
+```
+
+#### GPO : `Tier0-WEF-Forwarding`
+
+Chemin GPO :
+```
+Computer Configuration
+  → Policies
+    → Administrative Templates
+      → Windows Components
+        → Event Forwarding
+          → Configure target Subscription Manager
+```
+
+Valeur à définir :
+```
+Server=http://WEF-COLLECTOR.corp.example.com:5985/wsman/SubscriptionManager/WEC,Refresh=60
+```
+
+Lier cette GPO à l'OU contenant les DCs Tier0.
+
+### 5.5 Configuration du Collecteur Windows
+
+#### Initialiser le collecteur
+
+```powershell
+wecutil qc
+```
+
+#### Créer la subscription — `C:\Subscriptions\AD-Audit.xml`
+
+```xml
+<Subscription xmlns="http://schemas.microsoft.com/2006/03/windows/events/subscription">
+  <SubscriptionId>AD-Audit</SubscriptionId>
+  <SubscriptionType>SourceInitiated</SubscriptionType>
+  <Description>Audit AD : création/modif comptes, groupes, Kerberos</Description>
+  <Enabled>true</Enabled>
+  <Uri>http://schemas.microsoft.com/wbem/wsman/1/windows/EventLog</Uri>
+  <ConfigurationMode>Custom</ConfigurationMode>
+  <Delivery Mode="Push">
+    <Batching>
+      <MaxItems>50</MaxItems>
+      <MaxLatencyTime>30</MaxLatencyTime>
+    </Batching>
+  </Delivery>
+  <Query>
+    <![CDATA[
+      <QueryList>
+        <Query Id="0" Path="Security">
+          <Select Path="Security">
+            *[System[
+              EventID=4624 or EventID=4625 or EventID=4672 or
+              EventID=4720 or EventID=4722 or EventID=4723 or EventID=4724 or
+              EventID=4725 or EventID=4726 or EventID=4727 or EventID=4728 or
+              EventID=4729 or EventID=4732 or EventID=4733 or EventID=4735 or
+              EventID=4738 or EventID=4740 or EventID=4767 or EventID=4768 or
+              EventID=4769 or EventID=4771
+            ]]
+          </Select>
+        </Query>
+        <Query Id="1" Path="Directory Service">
+          <Select Path="Directory Service">*</Select>
+        </Query>
+      </QueryList>
+    ]]>
+  </Query>
+  <ReadExistingEvents>false</ReadExistingEvents>
+  <TransportName>HTTP</TransportName>
+  <ContentFormat>RenderedText</ContentFormat>
+  <Locale Language="fr-FR"/>
+  <LogFile>ForwardedEvents</LogFile>
+  <AllowedSourceDomainComputers>O:NSG:NSD:(A;;GA;;;DC)(A;;GA;;;NS)</AllowedSourceDomainComputers>
+</Subscription>
+```
+
+Importer la subscription :
+
+```powershell
+wecutil cs C:\Subscriptions\AD-Audit.xml
+```
+
+Vérifier la réception :
+
+```powershell
+Get-WinEvent -LogName ForwardedEvents -MaxEvents 20
+```
+
+### 5.6 Transfert vers l'Agent Java (Ubuntu)
+
+Le Collecteur Windows envoie les événements depuis `ForwardedEvents` vers l'Agent Java Ubuntu. Trois options :
+
+#### Option A — Filebeat (recommandé pour démarrage rapide)
+
+```yaml
+# filebeat.yml — sur le Collecteur Windows
+filebeat.inputs:
+  - type: winlog
+    event_logs:
+      - name: ForwardedEvents
+        ignore_older: 24h
+
+output.logstash:
+  hosts: ["ubuntu-agent.corp.example.com:5044"]
+```
+
+```
+ForwardedEvents → Filebeat (Windows) → Logstash/Agent (Ubuntu) → Kafka
+```
+
+#### Option B — NXLog
+
+```
+ForwardedEvents → NXLog (Windows) → UDP/TCP Syslog → SyslogAdapter (Agent Java)
+```
+
+Configurer NXLog pour envoyer en Syslog RFC 5424 TCP vers le port d'écoute `SyslogAdapter` de l'Agent Java (ex : 6514).
+
+#### Option C — WEF Adapter direct (Java, roadmap)
+
+L'`WefAdapter` lit directement le journal `ForwardedEvents` via les API Windows (JNA). Dans ce cas, l'Agent Java tourne **sur le Collecteur Windows** (JVM Windows), sans Ubuntu intermédiaire.
+
+```
+ForwardedEvents → WefAdapter (Java/JNA, tourne sur Windows) → Kafka
+```
+
+> Ce mode est en cours d'implémentation (`WefAdapter.java`). Il supprime l'intermédiaire Filebeat mais nécessite un JRE sur le Collecteur Windows.
+
+### 5.7 Intégration ISDS (IBM Security Directory Server)
+
+ISDS ne supporte pas WEF. Il expose ses événements via :
+
+| Protocole | Détails |
+|---|---|
+| **Syslog** TCP/UDP/TLS | Format BSM ou CEF — récepteur : `SyslogAdapter` de l'Agent |
+| **Audit LDAP** | Requêtes LDAP vers le journal d'audit ISDS |
+| **Fichiers journaux** | Collecte de fichiers `/var/log/...` via agent de fichiers |
+| **SNMP traps** | Alertes opérationnelles (moins pertinent pour IAM) |
+
+Architecture ISDS → Kafka :
+
+```
+ISDS → Syslog (TCP 6514) → SyslogAdapter (Agent Java Ubuntu) → iam.raw.isds
+```
+
+### 5.8 Architecture finale complète
+
+```
+                ┌─────────────────────┐
+                │   DC-01 (Tier0)     │
+                │   DC-02 (Tier0)     │
+                │   DC-0N (Tier0)     │
+                └──────────┬──────────┘
+                           │ WEF (WS-Management port 5985)
+                           ▼
+                ┌─────────────────────┐
+                │  Collecteur WEF     │  ← Windows Server, Tier1
+                │  (WEC Server)       │    Journal: ForwardedEvents
+                └──────────┬──────────┘
+                           │ Filebeat / NXLog / WefAdapter (Java)
+                           ▼
+                ┌─────────────────────┐
+                │   Agent Java        │  ← Ubuntu, Tier1
+                │   (IAP Agent)       │    SyslogAdapter / WefAdapter
+                │                     │    EventCollectionUseCase
+                └──────────┬──────────┘
+                           │
+              ┌────────────┴─────────────┐
+              ▼                          ▼
+   iam.raw.ad-corp-example-com    iam.raw.isds
+        (Topics Kafka)
+
+ISDS ──Syslog TCP 6514──────────────► Agent Java (SyslogAdapter) → iam.raw.isds
+Autres sources ──Syslog/Webhook────► Agent Java → iam.raw.{sourceId}
+```
+
+**Flux de sécurité par zone :**
+
+| Zone | Composant | Protocole sortant |
+|---|---|---|
+| Tier0 | Domain Controllers | WEF → port 5985 vers Collecteur Tier1 |
+| Tier1 (Windows) | Collecteur WEF | Filebeat/NXLog → port 5044/6514 vers Agent Ubuntu |
+| Tier1 (Linux) | Agent Java Ubuntu | Kafka Producer → port 9092 vers Kafka |
+| Tier1 (Linux) | Agent Java Ubuntu | Accepte Syslog sur port 6514 depuis ISDS |
