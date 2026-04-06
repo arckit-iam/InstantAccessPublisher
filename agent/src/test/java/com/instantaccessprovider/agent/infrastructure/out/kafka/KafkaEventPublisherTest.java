@@ -1,6 +1,7 @@
 package com.instantaccessprovider.agent.infrastructure.out.kafka;
 
 import com.instantaccessprovider.agent.domain.model.RawIamEvent;
+import com.instantaccessprovider.agent.domain.model.ResourceContext;
 import com.instantaccessprovider.agent.domain.model.SourceType;
 import com.instantaccessprovider.agent.infrastructure.out.kafka.schema.RawIamEventMessage;
 import org.junit.jupiter.api.BeforeEach;
@@ -102,6 +103,42 @@ class KafkaEventPublisherTest {
         assertThat(data.nativePayload()).isEqualTo(event.nativePayload());
         assertThat(data.detectedAt()).isEqualTo(event.detectedAt());
         assertThat(data.deduplicationKey()).isEqualTo(event.deduplicationKey());
+    }
+
+    @Test
+    void publish_dataContainsResource_whenPresent() {
+        RawIamEvent event = RawIamEvent.of(
+                "ad://corp.example.com", SourceType.ACTIVE_DIRECTORY,
+                "4728-001", "<Event/>", Instant.now(),
+                new ResourceContext("server", "DC01")
+        );
+        when(topicResolver.resolve(any())).thenReturn("iam.raw.test");
+        when(kafkaTemplate.send(any(), any(), any()))
+                .thenReturn(CompletableFuture.completedFuture(null));
+
+        ArgumentCaptor<RawIamEventMessage> captor = ArgumentCaptor.forClass(RawIamEventMessage.class);
+        publisher.publish(event);
+        verify(kafkaTemplate).send(any(), any(), captor.capture());
+
+        var data = captor.getValue().data();
+        assertThat(data.resourceType()).isEqualTo("server");
+        assertThat(data.resourceRef()).isEqualTo("DC01");
+    }
+
+    @Test
+    void publish_dataResourceIsNull_whenNotProvided() {
+        RawIamEvent event = buildEvent(); // sans resource
+        when(topicResolver.resolve(any())).thenReturn("iam.raw.test");
+        when(kafkaTemplate.send(any(), any(), any()))
+                .thenReturn(CompletableFuture.completedFuture(null));
+
+        ArgumentCaptor<RawIamEventMessage> captor = ArgumentCaptor.forClass(RawIamEventMessage.class);
+        publisher.publish(event);
+        verify(kafkaTemplate).send(any(), any(), captor.capture());
+
+        var data = captor.getValue().data();
+        assertThat(data.resourceType()).isNull();
+        assertThat(data.resourceRef()).isNull();
     }
 
     private static RawIamEvent buildEvent() {

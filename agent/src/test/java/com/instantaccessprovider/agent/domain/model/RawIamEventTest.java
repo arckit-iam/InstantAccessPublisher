@@ -67,4 +67,19 @@ class RawIamEventTest {
         assertThat(event.nativePayload()).isEqualTo("<xml/>");
         assertThat(event.detectedAt()).isEqualTo(NOW);
     }
+
+    @Test
+    void factory_withoutResource_resourceIsNull() {
+        RawIamEvent event = RawIamEvent.of(SOURCE_ID, SourceType.ACTIVE_DIRECTORY, NATIVE_ID, "<xml/>", NOW);
+        assertThat(event.resource()).isNull();
+    }
+
+    @Test
+    void factory_withResource_setsResourceContext() {
+        ResourceContext resource = new ResourceContext("server", "DC01");
+        RawIamEvent event = RawIamEvent.of(SOURCE_ID, SourceType.ACTIVE_DIRECTORY, NATIVE_ID, "<xml/>", NOW, resource);
+        assertThat(event.resource()).isEqualTo(resource);
+        assertThat(event.resource().type()).isEqualTo("server");
+        assertThat(event.resource().ref()).isEqualTo("DC01");
+    }
 }

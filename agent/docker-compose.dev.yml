@@ -1,9 +1,12 @@
+# Copier .env.example → .env et ajuster avant de lancer
+# docker compose -f docker-compose.dev.yml up
+
 services:
   kafka:
     image: apache/kafka:3.9.0
     container_name: iap-kafka-dev
     ports:
-      - "9092:9092"
+      - "${KAFKA_HOST_PORT:-9092}:9092"
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
@@ -22,6 +25,22 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: iap-agent-dev
+    env_file: ../.env
+    environment:
+      # Surcharges Docker : kafka interne au réseau compose
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_PROFILES_ACTIVE: "${SPRING_PROFILES_ACTIVE:-}"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    profiles:
+      - agent   # optionnel : docker compose --profile agent up
 
 volumes:
   kafka-data:

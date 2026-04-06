@@ -1,0 +1,43 @@
+# =============================================================================
+# application-local.yml — règles métier locales (GITIGNORED)
+#
+# Ce fichier ne contient QUE la configuration structurée difficile à exprimer
+# en variables d'environnement : typiquement resource-mappings.
+#
+# Toutes les valeurs scalaires (URLs, ports, mots de passe) sont dans .env
+# (voir .env.example).
+#
+# Activer ce profil : SPRING_PROFILES_ACTIVE=local
+# =============================================================================
+
+iap:
+  agent:
+    # -----------------------------------------------------------------------
+    # Règles de mapping ressource — adaptées aux conventions d'OU du client
+    #
+    # Modifier selon l'organisation Active Directory du client déployé.
+    # Exemple ci-dessous : lab IAP (iap.local), Tier2, applications sous
+    # OU=Applications et serveurs sous OU=Servers.
+    # -----------------------------------------------------------------------
+    resource-mappings:
+
+      # Application SX123456 : mapping statique prioritaire
+      - match-field: payload
+        pattern: "OU=SX123456[,\\s]"
+        resource-type: application
+        resource-ref: SX123456
+
+      # Toute application sous OU=Applications → ref = nom de l'OU
+      # Ex: CN=grp,OU=SX999999,OU=Applications,DC=iap,DC=local → application/SX999999
+      - match-field: payload
+        pattern: "OU=([A-Za-z0-9_-]+),OU=Applications,"
+        resource-type: application
+        resource-ref: "$1"
+
+      # Serveurs sous OU=Servers → ref = nom du DC/serveur
+      # Ex: CN=DC01-Admins,OU=DC01,OU=Servers,DC=iap,DC=local → server/DC01
+      - match-field: payload
+        pattern: "OU=([A-Za-z0-9_-]+),OU=Servers,"
+        resource-type: server
+        resource-ref: "$1"
+

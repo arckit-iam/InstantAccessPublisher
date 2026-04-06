@@ -1,5 +1,7 @@
 package com.instantaccessprovider.agent.domain.model;
 
+import org.springframework.lang.Nullable;
+
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -17,6 +19,8 @@ import java.util.HexFormat;
  * @param nativePayload    Payload brut non transformé (XML, JSON, CEF…)
  * @param detectedAt       Horodatage de détection par l'Agent (ISO 8601)
  * @param deduplicationKey SHA-256(sourceId | nativeEventId | timestamp/s)
+ * @param resource         Ressource cible optionnelle (type libre + référence libre).
+ *                         Null si l'événement ne porte pas de contexte de ressource.
  */
 public record RawIamEvent(
         String sourceId,
@@ -24,10 +28,11 @@ public record RawIamEvent(
         String nativeEventId,
         String nativePayload,
         Instant detectedAt,
-        String deduplicationKey
+        String deduplicationKey,
+        @Nullable ResourceContext resource
 ) {
     /**
-     * Factory — calcule automatiquement la clé de déduplication.
+     * Factory sans contexte de ressource (cas le plus fréquent).
      */
     public static RawIamEvent of(
             String sourceId,
@@ -36,13 +41,29 @@ public record RawIamEvent(
             String nativePayload,
             Instant detectedAt
     ) {
+        return of(sourceId, sourceType, nativeEventId, nativePayload, detectedAt, null);
+    }
+
+    /**
+     * Factory avec contexte de ressource optionnel.
+     * Passer {@code null} pour {@code resource} si l'information n'est pas disponible.
+     */
+    public static RawIamEvent of(
+            String sourceId,
+            SourceType sourceType,
+            String nativeEventId,
+            String nativePayload,
+            Instant detectedAt,
+            @Nullable ResourceContext resource
+    ) {
         return new RawIamEvent(
                 sourceId,
                 sourceType,
                 nativeEventId,
                 nativePayload,
                 detectedAt,
-                computeDeduplicationKey(sourceId, nativeEventId, detectedAt)
+                computeDeduplicationKey(sourceId, nativeEventId, detectedAt),
+                resource
         );
     }
 

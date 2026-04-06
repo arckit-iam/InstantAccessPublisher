@@ -97,3 +97,98 @@ Quelle que soit la source (AD, application, LDAP…), la plateforme ne produit q
 - Connaissance de base d'Active Directory et des Windows Event Logs
 - Notions de messaging asynchrone (Kafka, Event Hub, etc.)
 - Familiarité avec les patterns event-driven (Event Sourcing, CQRS)
+
+---
+
+## Configuration et déploiement de l'agent
+
+### Stratégie de configuration (12-factor)
+
+La configuration de l'agent est répartie en trois couches, par ordre de priorité croissante :
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  3. Variables d'environnement        (PRIORITÉ MAXIMALE)        │
+│     Secrets, URLs de connexion                                  │
+│     Source : Vault / K8s Secret / CI-CD secrets / .env local    │
+├─────────────────────────────────────────────────────────────────┤
+│  2. application-{profil}.yml                                    │
+│     Règles métier du client (resource-mappings, event-ids…)     │
+│     Versionné dans un repo de config séparé par client          │
+├─────────────────────────────────────────────────────────────────┤
+│  1. application.yml                  (PRIORITÉ MINIMALE)        │
+│     Socle produit générique, commité dans ce repo               │
+│     N'évolue que lors d'ajouts de fonctionnalité produit        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Ce découplage garantit qu'un changement de configuration client (réorganisation d'OUs AD,
+nouvelle application) ne nécessite **jamais** de relivrer le binaire de l'agent.
+
+### Démarrage développement local
+
+```bash
+# 1. Copier et éditer les variables d'environnement
+cp .env.example .env
+# éditer .env : URLs, mots de passe, source-id...
+
+# 2. Lancer Kafka (Docker)
+docker compose -f agent/docker-compose.dev.yml up kafka
+
+# 3. Lancer l'agent (charge context-resolver-rules.yml via IAP_CONFIG_FILE)
+cd agent
+./mvnw spring-boot:run
+# ou sous Windows PowerShell :
+.\mvnw spring-boot:run
+```
+
+### Fichiers de configuration
+
+| Fichier | Commité | Contenu |
+|---|---|---|
+| `agent/src/main/resources/application.yml` | ✅ oui | Socle produit, valeurs `${VAR:default}` |
+| `agent/src/main/resources/context-resolver-rules.yml` | ❌ gitignored | `resource-mappings` pour dev local |
+| `.env.example` | ✅ oui | Liste documentée de toutes les variables |
+| `.env` | ❌ gitignored | Valeurs réelles pour dev local |
+| `acme-corp.yml` (nom libre) | ✅ (repo config séparé) | Règles métier propres au client |
+
+### Variables d'environnement principales
+
+| Variable | Défaut dans application.yml | Description |
+|---|---|---|
+| `IAP_INSTANCE_ID` | `agent-default` | Identifiant de l'instance |
+| `SPRING_KAFKA_BOOTSTRAP_SERVERS` | `change.me:9092` | Brokers Kafka |
+| `IAP_WEF_SOURCE_ID` | `ad://change.me` | URI de la source AD |
+| `IAP_LDAP_URL` | `ldap://change.me:389` | URL du serveur LDAP / AD |
+| `IAP_LDAP_BASE_DN` | `DC=change,DC=me` | Base DN LDAP |
+| `IAP_LDAP_BIND_DN` | *(vide)* | DN du compte de service |
+| `IAP_LDAP_BIND_PASSWORD` | *(vide)* | Mot de passe du compte de service |
+| `IAP_CONFIG_FILE` | *(vide)* | Chemin vers le fichier de règles métier (`classpath:` ou `file:`) |
+| `SPRING_PROFILES_ACTIVE` | *(vide)* | Profils Spring (généralement vide, config via `IAP_CONFIG_FILE`) |
+
+Voir [.env.example](.env.example) pour la liste complète.
+
+### Déploiement chez un client
+
+```
+repo agent (ce repo)          →  application.yml               (socle produit)
+repo config client-abc        →  acme-corp.yml                 (resource-mappings prod)
+                                  acme-corp-staging.yml         (resource-mappings staging)
+Vault / K8s Secret            →  IAP_LDAP_BIND_PASSWORD
+                                  SPRING_KAFKA_BOOTSTRAP_SERVERS
+                                  IAP_WEF_SOURCE_ID
+                                  IAP_CONFIG_FILE=file:/etc/iap/acme-corp.yml
+```
+
+Activation du fichier client en production :
+```bash
+# Kubernetes (env var dans le deployment)
+env:
+  - name: IAP_CONFIG_FILE
+    value: file:/etc/iap/acme-corp.yml
+  - name: IAP_LDAP_BIND_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: iap-secrets
+        key: ldap-bind-password
+```

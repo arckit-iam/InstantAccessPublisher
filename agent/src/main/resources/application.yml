@@ -1,32 +1,72 @@
+# =============================================================================
+# application.yml — configuration générique (commité dans git)
+#
+# Ce fichier est le SEUL fichier de configuration commité dans le repo de l'agent.
+# Il ne contient aucune valeur sensible ni spécifique à un client ou environnement.
+#
+# Stratégie de surcharge (ordre de priorité croissant) :
+#
+#   1. application.yml               <- ce fichier (socle produit, repo agent)
+#   2. application-{profil}.yml      <- règles métier du client (repo config séparé)
+#                                       ex: application-client-abc.yml
+#                                       contient typiquement : resource-mappings
+#   3. Variables d'environnement     <- secrets et URLs, injectés par l'infra
+#                                       (Vault, K8s Secret, CI/CD, .env local)
+#                                       ex: IAP_LDAP_BIND_PASSWORD, SPRING_KAFKA_BOOTSTRAP_SERVERS
+#
+# Ce fichier ne doit évoluer que lorsqu'une nouvelle fonctionnalité est ajoutée
+# au produit, jamais pour adapter la configuration d'un client.
+#
+# Démarrage local :
+#   cp .env.example .env && éditer .env
+#   SPRING_PROFILES_ACTIVE=local ./mvnw spring-boot:run   (active application-local.yml)
+#
+# Voir .env.example pour la liste complète des variables d'environnement.
+# =============================================================================
+
 iap:
   agent:
-    instance-id: "agent-local-dev"
+    instance-id: "${IAP_INSTANCE_ID:agent-default}"
+
+    # -----------------------------------------------------------------------
+    # Résolution du contexte de ressource
+    #
+    # Chaque règle est évaluée dans l'ordre ; la première correspondance gagne.
+    # match-field : "payload" (défaut) | "source-id" | "native-event-id"
+    # pattern     : regex Java (java.util.regex)
+    # resource-type / resource-ref : valeur statique ou groupe de capture ($1…$9)
+    #
+    # Surcharger cette liste dans le fichier désigné par IAP_CONFIG_FILE
+    # pour adapter aux conventions d'OU/DN du client.
+    # -----------------------------------------------------------------------
+    resource-mappings: []
+
     adapters:
       wef:
         enabled: false
         channel-name: ForwardedEvents
         event-ids: [4720, 4722, 4725, 4726, 4727, 4728, 4729, 4730,
                     4731, 4732, 4733, 4734, 4738, 4754, 4756, 4757, 4758, 4781]
-        source-id: "ad://corp.example.com"
+        source-id: "${IAP_WEF_SOURCE_ID:ad://change.me}"
       syslog:
         enabled: false
-        listen-port: 6514
+        listen-port: "${IAP_SYSLOG_PORT:6514}"
         protocol: TCP
         source-id-field: hostname
       webhook:
         enabled: false
-        listen-port: 8080
+        listen-port: "${IAP_WEBHOOK_PORT:8080}"
       dirsync:
         enabled: false
-        ldap-url: "ldap://localhost:389"
-        base-dn: "DC=corp,DC=example,DC=com"
-        bind-dn: ""
-        bind-password: "${DIRSYNC_BIND_PASSWORD:}"
-        poll-interval-seconds: 15
+        ldap-url: "${IAP_LDAP_URL:ldap://change.me:389}"
+        base-dn: "${IAP_LDAP_BASE_DN:DC=change,DC=me}"
+        bind-dn: "${IAP_LDAP_BIND_DN:}"
+        bind-password: "${IAP_LDAP_BIND_PASSWORD:}"
+        poll-interval-seconds: "${IAP_LDAP_POLL_INTERVAL:15}"
 
 spring:
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: "${IAP_KAFKA_BOOTSTRAP:change.me:9092}"
     producer:
       acks: all
       retries: 3
@@ -40,4 +80,15 @@ spring:
 
 logging:
   level:
-    com.instantaccessprovider: DEBUG
+    com.instantaccessprovider: "${IAP_LOG_LEVEL:INFO}"
+
+spring:
+  config:
+    # Chemin vers le fichier de règles métier du client (resource-mappings, etc.).
+    # Peut pointer vers n'importe quel fichier YAML, quel que soit son nom.
+    # Exemples :
+    #   IAP_CONFIG_FILE=classpath:context-resolver-rules.yml   (dev local, dans resources/)
+    #   IAP_CONFIG_FILE=file:/etc/iap/acme-corp.yml            (prod, monté en ConfigMap K8s)
+    #   IAP_CONFIG_FILE=file:/opt/iap/client-abc.yml           (prod, volume Docker)
+    # Laisser vide pour ne charger aucun fichier de règles (resource-mappings restera []).
+    import: "optional:${IAP_CONFIG_FILE:}"
