@@ -1,4 +1,0 @@
-/workspace/src/test/java/com/instantaccessprovider/agent/application/AgentOrchestratorTest.java
-/workspace/src/test/java/com/instantaccessprovider/agent/domain/model/RawIamEventTest.java
-/workspace/src/test/java/com/instantaccessprovider/agent/infrastructure/out/kafka/KafkaEventPublisherTest.java
-/workspace/src/test/java/com/instantaccessprovider/agent/infrastructure/out/kafka/KafkaTopicResolverTest.java

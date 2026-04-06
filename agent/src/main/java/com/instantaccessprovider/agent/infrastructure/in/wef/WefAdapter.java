@@ -1,25 +1,30 @@
 package com.instantaccessprovider.agent.infrastructure.in.wef;
 
 import com.instantaccessprovider.agent.config.AgentProperties;
-import com.instantaccessprovider.agent.domain.port.in.EventCollectionUseCase;
 import com.instantaccessprovider.agent.domain.port.in.InputAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 /**
  * Adapter entrant — Windows Event Forwarding (Active Directory).
  *
- * Transport : WEF / WS-Management depuis le WEC Server (Windows Event Collector).
- * Fallback  : DirSync LDAP (voir DirsyncAdapter).
+ * <p>Flux de traitement :
+ * <pre>
+ *   ForwardedEvents (WEF channel)
+ *     → EvtSubscribe (JNA / wevtapi.dll)
+ *       → WinEvtSubscription.renderXml()
+ *         → WefEventProcessor.process()
+ *           → WefXmlParser, ResourceContextResolver
+ *             → EventCollectionUseCase.handle(RawIamEvent)
+ * </pre>
  *
- * TODO: implémenter la connexion au canal WEF via les API Windows (JNA / WEvtApi.dll)
- *       ou via une librairie WEF Java.
- *       Pour chaque événement reçu :
- *         1. Parser le XML Windows Event Log
- *         2. Filtrer sur les eventIds configurés
- *         3. Créer un RawIamEvent
- *         4. Appeler eventCollectionUseCase.handle(event)
+ * <p>Cet adapter ne fonctionne que sur Windows (wevtapi.dll). Sur tout autre OS,
+ * l'agent démarrera sans erreur si l'adapter est désactivé ; sinon une
+ * {@link IllegalStateException} explicite sera levée au démarrage.
  */
 @Component
 public class WefAdapter implements InputAdapter {
@@ -27,12 +32,14 @@ public class WefAdapter implements InputAdapter {
     private static final Logger log = LoggerFactory.getLogger(WefAdapter.class);
     private static final String ADAPTER_TYPE = "wef";
 
-    private final EventCollectionUseCase eventCollectionUseCase;
     private final AgentProperties.WefProperties properties;
+    private final WefEventProcessor processor;
 
-    public WefAdapter(EventCollectionUseCase eventCollectionUseCase, AgentProperties props) {
-        this.eventCollectionUseCase = eventCollectionUseCase;
+    private volatile WinEvtSubscription subscription;
+
+    public WefAdapter(AgentProperties props, WefEventProcessor processor) {
         this.properties = props.adapters() != null ? props.adapters().wef() : null;
+        this.processor  = processor;
     }
 
     @Override
@@ -51,13 +58,46 @@ public class WefAdapter implements InputAdapter {
             log.info("WEF adapter désactivé");
             return;
         }
-        throw new UnsupportedOperationException(
-                "WEF adapter non implémenté. Canal cible : " + properties.channelName()
-        );
+
+        String xpathQuery = buildXpathQuery(properties.eventIds());
+        try {
+            subscription = new WinEvtSubscription(
+                    properties.channelName(),
+                    xpathQuery,
+                    processor::process
+            );
+            log.info("WEF adapter démarré — canal={} eventIds={}",
+                     properties.channelName(), processor.allowedEventIds());
+        } catch (UnsatisfiedLinkError e) {
+            throw new IllegalStateException(
+                    "wevtapi.dll non disponible. L'agent WEF doit s'exécuter sur Windows.", e);
+        }
     }
 
     @Override
     public void stop() {
-        // TODO: fermer la subscription WEF proprement
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+            log.info("WEF adapter arrêté");
+        }
+    }
+
+    // --------------------------------------------------------------------------
+    // Helpers
+    // --------------------------------------------------------------------------
+
+    /**
+     * Construit le filtre XPath pour EvtSubscribe.
+     *
+     * <p>Exemple : {@code *[System[EventID=4720 or EventID=4728 or EventID=4730]]}
+     */
+    static String buildXpathQuery(List<Integer> eventIds) {
+        if (eventIds == null || eventIds.isEmpty()) {
+            return "*";
+        }
+        return eventIds.stream()
+                .map(id -> "EventID=" + id)
+                .collect(Collectors.joining(" or ", "*[System[", "]]"));
     }
 }

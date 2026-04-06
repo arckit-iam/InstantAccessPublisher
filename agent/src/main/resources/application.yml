@@ -43,21 +43,21 @@ iap:
 
     adapters:
       wef:
-        enabled: false
+        enabled: "${IAP_AGENT_ADAPTERS_WEF_ENABLED:false}"
         channel-name: ForwardedEvents
         event-ids: [4720, 4722, 4725, 4726, 4727, 4728, 4729, 4730,
                     4731, 4732, 4733, 4734, 4738, 4754, 4756, 4757, 4758, 4781]
         source-id: "${IAP_WEF_SOURCE_ID:ad://change.me}"
       syslog:
-        enabled: false
+        enabled: "${IAP_AGENT_ADAPTERS_SYSLOG_ENABLED:false}"
         listen-port: "${IAP_SYSLOG_PORT:6514}"
         protocol: TCP
         source-id-field: hostname
       webhook:
-        enabled: false
+        enabled: "${IAP_AGENT_ADAPTERS_WEBHOOK_ENABLED:false}"
         listen-port: "${IAP_WEBHOOK_PORT:8080}"
       dirsync:
-        enabled: false
+        enabled: "${IAP_AGENT_ADAPTERS_DIRSYNC_ENABLED:false}"
         ldap-url: "${IAP_LDAP_URL:ldap://change.me:389}"
         base-dn: "${IAP_LDAP_BASE_DN:DC=change,DC=me}"
         bind-dn: "${IAP_LDAP_BIND_DN:}"
@@ -65,6 +65,20 @@ iap:
         poll-interval-seconds: "${IAP_LDAP_POLL_INTERVAL:15}"
 
 spring:
+  main:
+    # Maintient la JVM en vie même sans thread non-daemon (ex: WEF callback-based via EvtSubscribe).
+    keep-alive: true
+
+  config:
+    # Chemin vers le fichier de règles métier du client (resource-mappings, etc.).
+    # Peut pointer vers n'importe quel fichier YAML, quel que soit son nom.
+    # Exemples :
+    #   IAP_CONFIG_FILE=classpath:context-resolver-rules.yml   (dev local, dans resources/)
+    #   IAP_CONFIG_FILE=file:/etc/iap/acme-corp.yml            (prod, monté en ConfigMap K8s)
+    #   IAP_CONFIG_FILE=file:/opt/iap/client-abc.yml           (prod, volume Docker)
+    # Laisser vide pour ne charger aucun fichier de règles (resource-mappings restera []).
+    import: "optional:${IAP_CONFIG_FILE:}"
+
   kafka:
     bootstrap-servers: "${IAP_KAFKA_BOOTSTRAP:change.me:9092}"
     producer:
@@ -81,14 +95,3 @@ spring:
 logging:
   level:
     com.instantaccessprovider: "${IAP_LOG_LEVEL:INFO}"
-
-spring:
-  config:
-    # Chemin vers le fichier de règles métier du client (resource-mappings, etc.).
-    # Peut pointer vers n'importe quel fichier YAML, quel que soit son nom.
-    # Exemples :
-    #   IAP_CONFIG_FILE=classpath:context-resolver-rules.yml   (dev local, dans resources/)
-    #   IAP_CONFIG_FILE=file:/etc/iap/acme-corp.yml            (prod, monté en ConfigMap K8s)
-    #   IAP_CONFIG_FILE=file:/opt/iap/client-abc.yml           (prod, volume Docker)
-    # Laisser vide pour ne charger aucun fichier de règles (resource-mappings restera []).
-    import: "optional:${IAP_CONFIG_FILE:}"

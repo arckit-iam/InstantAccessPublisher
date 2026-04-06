@@ -1,4 +1,0 @@
-com/instantaccessprovider/agent/domain/model/RawIamEventTest.class
-com/instantaccessprovider/agent/infrastructure/out/kafka/KafkaTopicResolverTest.class
-com/instantaccessprovider/agent/application/AgentOrchestratorTest.class
-com/instantaccessprovider/agent/infrastructure/out/kafka/KafkaEventPublisherTest.class
