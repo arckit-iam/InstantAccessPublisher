@@ -103,23 +103,80 @@ INFO  c.i.a.i.in.wef.WefAdapter : WEF adapter démarré — canal=ForwardedEvent
 
 ### 4. Installer comme service Windows
 
+Le pipeline (voir [Déploiement automatisé](#déploiement-automatisé--template-iap-integration) ci-dessous)
+gère automatiquement les deux cas. Pour une installation manuelle initiale :
+
+**Prérequis sur WEC01 avant le premier déploiement automatisé :**
+- [NSSM](https://nssm.cc/) installé et dans le `PATH`
+- Java 21 JRE installé et `java` dans le `PATH`
+- Compte de service `CORP\svc-iap` membre du groupe **Event Log Readers**
+
 ```powershell
-# Créer le service avec NSSM (https://nssm.cc/) — recommandé
-nssm install IapAgent "C:\Program Files\Microsoft\jdk-21...\bin\java.exe"
-nssm set IapAgent AppParameters "-jar C:\iap\iap-agent.jar"
-nssm set IapAgent AppDirectory C:\iap
-nssm set IapAgent AppEnvironmentExtra `
-  "IAP_INSTANCE_ID=agent-wec01-prod" `
-  "SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka.interne.client.com:9092" `
-  "IAP_AGENT_ADAPTERS_WEF_ENABLED=true" `
-  "IAP_WEF_SOURCE_ID=ad://corp.client.com" `
-  "IAP_CONFIG_FILE=file:C:\iap\rules.yml" `
-  "IAP_LOG_LEVEL=INFO"
-nssm set IapAgent AppStdout C:\iap\logs\iap-agent.log
-nssm set IapAgent AppStderr C:\iap\logs\iap-agent-error.log
-nssm set IapAgent ObjectName "DOMAIN\svc-iap" <mot_de_passe>
-Start-Service IapAgent
+# Vérification rapide
+Get-Command nssm ; java -version
+New-Item -ItemType Directory -Path C:\iap\logs -Force
 ```
+
+Ensuite, un premier déclenchement du pipeline suffit — il détecte l'absence du service
+et effectue l'installation complète automatiquement.
+
+---
+
+## Déploiement automatisé — template `iap-integration`
+
+Si le client utilise le template `iap-integration` fourni par l'éditeur, le déploiement
+est entièrement géré par GitHub Actions. La seule chose à configurer dans le repo client
+sont les **Variables** et **Secrets** de l'environnement GitHub (ex : `prod`).
+
+Le workflow est **idempotent** :
+- Service `IapAgent` absent → `nssm install` + `Start-Service` (**première installation**)
+- Service présent → mise à jour du jar + sync des variables + `Restart-Service` (**update**)
+
+Aucun workflow séparé « init » n'est nécessaire : le premier push de tag déclenche
+aussi bien une installation initiale qu'une mise à jour.
+
+### Variables et Secrets GitHub à configurer
+
+#### Connexion au serveur *(utilisées par le runner CI pour accéder à WEC01)*
+
+| Clé | Type GitHub | Exemple | Description |
+|---|---|---|---|
+| `PRODLAB_HOST` | Variable | `wec01.corp.client.com` | Hostname ou IP du serveur WEC |
+| `PRODLAB_USER` | Variable | `svc-deploy` | Utilisateur SSH sur WEC01 |
+| `PRODLAB_DEPLOY_PATH` | Variable | `C:\iap` | Dossier de déploiement sur WEC01 |
+| `PRODLAB_SSH_PRIVATE_KEY` | **Secret** | *(clé privée ed25519)* | Clé privée SSH du compte de déploiement |
+
+> La clé publique correspondante doit être dans `C:\Users\svc-deploy\.ssh\authorized_keys` sur WEC01.
+
+#### Configuration de l'application *(injectées dans le service NSSM à chaque deploy)*
+
+| Clé | Type GitHub | Obligatoire | Exemple | Description |
+|---|---|---|---|---|
+| `IAP_INSTANCE_ID` | Variable | Non | `agent-wec01-prod` | Identifiant de l'instance (logs) |
+| `SPRING_KAFKA_BOOTSTRAP_SERVERS` | Variable | **Oui** | `kafka.corp.client.com:9092` | Adresse(s) du broker Kafka |
+| `IAP_AGENT_ADAPTERS_WEF_ENABLED` | Variable | Non | `true` | Active l'adapter WEF |
+| `IAP_WEF_SOURCE_ID` | Variable | Si WEF | `ad://corp.client.com` | Identifiant de la source AD |
+| `IAP_WEF_REMOTE_HOST` | Variable | Non | *(vide)* | Hôte WEC distant (vide = local) |
+| `IAP_AGENT_ADAPTERS_DIRSYNC_ENABLED` | Variable | Non | `false` | Active l'adapter DirSync/LDAP |
+| `IAP_LDAP_URL` | Variable | Si DirSync | `ldap://dc01.corp.client.com:389` | URL LDAP |
+| `IAP_LDAP_BASE_DN` | Variable | Si DirSync | `DC=corp,DC=client,DC=com` | Base DN |
+| `IAP_LDAP_BIND_DN` | Variable | Si DirSync | `CN=svc-iap,OU=ServiceAccounts,...` | DN du compte de service LDAP |
+| `IAP_LDAP_BIND_PASSWORD` | **Secret** | Si DirSync | *(mot de passe)* | Mot de passe du compte LDAP |
+| `IAP_LDAP_POLL_INTERVAL` | Variable | Non | `15` | Intervalle de polling DirSync (secondes) |
+| `IAP_AGENT_ADAPTERS_WEBHOOK_ENABLED` | Variable | Non | `false` | Active l'adapter Webhook |
+| `IAP_WEBHOOK_PORT` | Variable | Non | `8080` | Port d'écoute Webhook |
+| `IAP_AGENT_ADAPTERS_SYSLOG_ENABLED` | Variable | Non | `false` | Active l'adapter Syslog |
+| `IAP_SYSLOG_PORT` | Variable | Non | `6514` | Port d'écoute Syslog UDP |
+| `IAP_LOG_LEVEL` | Variable | Non | `INFO` | Niveau de log |
+| `IAP_CONFIG_FILE` | Variable | Non | `file:C:\iap\rules.yml` | Chemin vers le fichier de règles YAML |
+| `SPRING_PROFILES_ACTIVE` | Variable | Non | *(vide)* | Profils Spring actifs |
+
+#### Compte de service Windows *(utilisé uniquement à la première installation)*
+
+| Clé | Type GitHub | Exemple | Description |
+|---|---|---|---|
+| `IAP_SERVICE_ACCOUNT` | Variable | `CORP\svc-iap` | Compte Windows sous lequel le service tourne |
+| `IAP_SERVICE_ACCOUNT_PASSWORD` | **Secret** | *(mot de passe)* | Mot de passe du compte de service Windows |
 
 ---
 

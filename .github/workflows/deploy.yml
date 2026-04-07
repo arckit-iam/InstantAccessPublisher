@@ -9,7 +9,9 @@ on:
     secrets:
       PRODLAB_SSH_PRIVATE_KEY:
         required: true
-      IAP_LDAP_BIND_PASSWORD:      # sensible — uniquement si DirSync activé
+      IAP_LDAP_BIND_PASSWORD:           # sensible — uniquement si DirSync activé
+        required: false
+      IAP_SERVICE_ACCOUNT_PASSWORD:     # mot de passe du compte Windows — init uniquement
         required: false
 
 jobs:
@@ -43,12 +45,26 @@ jobs:
           username: ${{ vars.PRODLAB_USER }}
           key: ${{ secrets.PRODLAB_SSH_PRIVATE_KEY }}
           script: |
-            # Mettre à jour le jar actif
-            Copy-Item "${{ vars.PRODLAB_DEPLOY_PATH }}\iap-agent-${{ inputs.version }}.jar" `
-                      "${{ vars.PRODLAB_DEPLOY_PATH }}\iap-agent.jar" -Force
+            $deployPath = "${{ vars.PRODLAB_DEPLOY_PATH }}"
 
-            # Synchroniser toutes les variables d'environnement de l'application
-            # (écrase AppEnvironmentExtra en entier — GitHub Variables est la source de vérité)
+            # ── Première installation si le service n'existe pas encore ──────────
+            if (-not (Get-Service IapAgent -ErrorAction SilentlyContinue)) {
+              $javaExe = (Get-Command java -ErrorAction Stop).Source
+              New-Item -ItemType Directory -Path "$deployPath\logs" -Force | Out-Null
+              & nssm install IapAgent $javaExe
+              & nssm set IapAgent AppParameters  "-jar $deployPath\iap-agent.jar"
+              & nssm set IapAgent AppDirectory   $deployPath
+              & nssm set IapAgent AppStdout      "$deployPath\logs\iap-agent.log"
+              & nssm set IapAgent AppStderr      "$deployPath\logs\iap-agent-error.log"
+              & nssm set IapAgent ObjectName     "${{ vars.IAP_SERVICE_ACCOUNT }}" `
+                                                 "${{ secrets.IAP_SERVICE_ACCOUNT_PASSWORD }}"
+            }
+
+            # ── Mettre à jour le jar actif (init et update) ──────────────────────
+            Copy-Item "$deployPath\iap-agent-${{ inputs.version }}.jar" `
+                      "$deployPath\iap-agent.jar" -Force
+
+            # ── Synchroniser toutes les variables (GitHub Variables = source de vérité)
             & nssm set IapAgent AppEnvironmentExtra `
               "IAP_INSTANCE_ID=${{ vars.IAP_INSTANCE_ID }}" `
               "SPRING_KAFKA_BOOTSTRAP_SERVERS=${{ vars.SPRING_KAFKA_BOOTSTRAP_SERVERS }}" `
@@ -60,6 +76,7 @@ jobs:
               "IAP_LDAP_BASE_DN=${{ vars.IAP_LDAP_BASE_DN }}" `
               "IAP_LDAP_BIND_DN=${{ vars.IAP_LDAP_BIND_DN }}" `
               "IAP_LDAP_BIND_PASSWORD=${{ secrets.IAP_LDAP_BIND_PASSWORD }}" `
+              "IAP_LDAP_POLL_INTERVAL=${{ vars.IAP_LDAP_POLL_INTERVAL }}" `
               "IAP_AGENT_ADAPTERS_WEBHOOK_ENABLED=${{ vars.IAP_AGENT_ADAPTERS_WEBHOOK_ENABLED }}" `
               "IAP_WEBHOOK_PORT=${{ vars.IAP_WEBHOOK_PORT }}" `
               "IAP_AGENT_ADAPTERS_SYSLOG_ENABLED=${{ vars.IAP_AGENT_ADAPTERS_SYSLOG_ENABLED }}" `
@@ -68,4 +85,6 @@ jobs:
               "IAP_CONFIG_FILE=${{ vars.IAP_CONFIG_FILE }}" `
               "SPRING_PROFILES_ACTIVE=${{ vars.SPRING_PROFILES_ACTIVE }}"
 
-            Restart-Service IapAgent
+            # ── Démarrer ou redémarrer ────────────────────────────────────────────
+            Stop-Service IapAgent -Force -ErrorAction SilentlyContinue
+            Start-Service IapAgent
