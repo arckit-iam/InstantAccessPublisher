@@ -1,0 +1,35 @@
+# =============================================================================
+# rules.yml — règles de mapping ressource pour l'environnement prod-lab
+#
+# Ce fichier est versionné dans le repo Git et déployé automatiquement
+# sur WEC01 à chaque release (aux côtés du JAR).
+#
+# L'application le charge via :
+#   IAP_CONFIG_FILE=file:C:\iap\rules.yml
+#
+# Modifier selon l'organisation Active Directory de l'environnement cible.
+# =============================================================================
+
+iap:
+  agent:
+    resource-mappings:
+
+      # Application SX123456 : mapping statique prioritaire
+      - match-field: payload
+        pattern: "OU=SX123456[,\\s]"
+        resource-type: application
+        resource-ref: SX123456
+
+      # Toute application sous OU=Applications → ref = nom de l'OU
+      # Ex: CN=grp,OU=SX999999,OU=Applications,DC=iap,DC=local → application/SX999999
+      - match-field: payload
+        pattern: "OU=([A-Za-z0-9_-]+),OU=Applications,"
+        resource-type: application
+        resource-ref: "$1"
+
+      # Serveurs sous OU=Servers → ref = nom du DC/serveur
+      # Ex: CN=DC01-Admins,OU=DC01,OU=Servers,DC=iap,DC=local → server/DC01
+      - match-field: payload
+        pattern: "OU=([A-Za-z0-9_-]+),OU=Servers,"
+        resource-type: server
+        resource-ref: "$1"

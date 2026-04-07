@@ -4,9 +4,16 @@ on:
   release:
     types: [prereleased, released]
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/iap-agent
+
 jobs:
   promote:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write    # pour attacher le jar à la Release
+      packages: write    # pour re-tagger l'image Docker
     outputs:
       version: ${{ steps.version.outputs.VERSION }}
 
@@ -15,6 +22,13 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       # ── Pre-release : dev → rc ──────────────────────────────────────────────
       - name: Download dev artifact
         if: github.event.action == 'prereleased'
@@ -22,7 +36,7 @@ jobs:
         with:
           name: iap-agent-${{ steps.version.outputs.VERSION }}-dev
 
-      - name: Promote dev → rc
+      - name: Promote JAR dev → rc
         if: github.event.action == 'prereleased'
         run: |
           mv iap-agent-${{ steps.version.outputs.VERSION }}-dev.jar \
@@ -36,6 +50,14 @@ jobs:
           path: iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar
           retention-days: 90
 
+      - name: Promote Docker image dev → rc
+        if: github.event.action == 'prereleased'
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-dev
+          docker tag  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-dev \
+                      ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-rc
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-rc
+
       # ── Release : rc → stable ───────────────────────────────────────────────
       - name: Download rc artifact
         if: github.event.action == 'released'
@@ -43,7 +65,7 @@ jobs:
         with:
           name: iap-agent-${{ steps.version.outputs.VERSION }}-rc
 
-      - name: Promote rc → stable
+      - name: Promote JAR rc → stable
         if: github.event.action == 'released'
         run: |
           mv iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar \
@@ -62,6 +84,17 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: iap-agent-${{ steps.version.outputs.VERSION }}.jar
+
+      - name: Promote Docker image rc → stable + latest
+        if: github.event.action == 'released'
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-rc
+          docker tag  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-rc \
+                      ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}
+          docker tag  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-rc \
+                      ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
   # ── Deploy (release uniquement) ─────────────────────────────────────────────
   deploy:
