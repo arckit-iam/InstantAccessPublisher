@@ -3,10 +3,13 @@ package com.instantaccessprovider.agent.infrastructure.in.wef;
 import com.sun.jna.Callback;
 import com.sun.jna.Native;
 import com.sun.jna.Pointer;
+import com.sun.jna.Structure;
 import com.sun.jna.WString;
 import com.sun.jna.platform.win32.WinNT.HANDLE;
 import com.sun.jna.ptr.IntByReference;
 import com.sun.jna.win32.StdCallLibrary;
+
+import java.util.List;
 
 /**
  * Interface JNA vers {@code wevtapi.dll} (Windows Event Log API).
@@ -35,6 +38,36 @@ interface WinEvtApi extends StdCallLibrary {
 
     /** Flag EvtRender : rendu en XML complet de l'événement. */
     int EVT_RENDER_EVENT_XML            = 1;
+
+    /** LoginClass pour EvtOpenSession : connexion RPC (seule valeur supportée). */
+    int EVT_LOGIN_CLASS_RPC_LOGIN       = 1;
+
+    /** Authentification par défaut (Kerberos/NTLM intégré de l'utilisateur courant). */
+    int EVT_RPC_LOGIN_AUTH_DEFAULT      = 0;
+
+    // ------------------------------------------------------------------
+    // Structures
+    // ------------------------------------------------------------------
+
+    /**
+     * Structure passée à {@link #EvtOpenSession} pour une connexion RPC distante.
+     *
+     * <p>Laisser {@code user}, {@code domain} et {@code password} à {@code null}
+     * pour utiliser les identifiants du compte courant (Kerberos/NTLM intégré).
+     */
+    @Structure.FieldOrder({"server", "user", "domain", "password", "flags"})
+    class EvtRpcLogin extends Structure {
+        /** Nom du serveur distant, ex: "WEC01" ou "192.168.10.20". */
+        public WString server;
+        /** Nom d'utilisateur, ou null pour le compte courant. */
+        public WString user;
+        /** Domaine, ou null pour le domaine courant. */
+        public WString domain;
+        /** Mot de passe, ou null pour le compte courant. */
+        public WString password;
+        /** Flags d'authentification : {@link #EVT_RPC_LOGIN_AUTH_DEFAULT}. */
+        public int flags;
+    }
 
     // ------------------------------------------------------------------
     // Fonctions
@@ -97,4 +130,24 @@ interface WinEvtApi extends StdCallLibrary {
 
     /** Ferme un handle ouvert par une API EvtXxx. */
     boolean EvtClose(HANDLE Object);
+
+    /**
+     * Ouvre une session RPC vers un serveur d'événements distant.
+     *
+     * <p>Exemple d'utilisation avec Kerberos intégré :
+     * <pre>
+     *   EvtRpcLogin login = new EvtRpcLogin();
+     *   login.server = new WString("WEC01");
+     *   login.flags  = EVT_RPC_LOGIN_AUTH_DEFAULT;
+     *   login.write();
+     *   HANDLE session = api.EvtOpenSession(EVT_LOGIN_CLASS_RPC_LOGIN, login.getPointer(), 0, 0);
+     * </pre>
+     *
+     * @param LoginClass doit être {@link #EVT_LOGIN_CLASS_RPC_LOGIN} (1)
+     * @param Login      pointeur sur une structure {@link EvtRpcLogin} écrite en mémoire native
+     * @param Timeout    doit être 0 (réservé)
+     * @param Flags      doit être 0 (réservé)
+     * @return handle de session (à fermer avec {@link #EvtClose}), null si erreur
+     */
+    HANDLE EvtOpenSession(int LoginClass, Pointer Login, int Timeout, int Flags);
 }

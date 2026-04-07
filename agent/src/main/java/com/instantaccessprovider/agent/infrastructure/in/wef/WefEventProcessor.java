@@ -90,6 +90,7 @@ class WefEventProcessor {
                 sourceId,
                 SourceType.ACTIVE_DIRECTORY,
                 nativeEventId,
+                eventTypeString,
                 rawXml,
                 Instant.now(),
                 resource.orElse(null)

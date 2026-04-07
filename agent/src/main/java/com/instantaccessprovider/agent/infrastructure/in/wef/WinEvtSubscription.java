@@ -30,13 +30,15 @@ class WinEvtSubscription implements AutoCloseable {
     private static final int MAX_EVENT_SIZE_BYTES = 1024 * 1024;
 
     private final HANDLE subscriptionHandle;
+    // Null quand l'abonnement est local.
+    private final HANDLE sessionHandle;
     // IMPORTANT : cette référence doit rester vivante tant que l'abonnement est actif.
     // Si le GC collecte l'objet, Windows appellera un pointeur de fonction invalide → JVM crash.
     @SuppressWarnings("FieldCanBeLocal")
     private final WinEvtApi.EvtSubscribeCallback callback;
 
     /**
-     * Crée et démarre immédiatement l'abonnement.
+     * Crée et démarre immédiatement l'abonnement (canal local).
      *
      * @param channelPath  canal WEF, ex: "ForwardedEvents"
      * @param xpathQuery   filtre XPath, ex: "*[System[EventID=4720 or EventID=4728]]"
@@ -44,7 +46,49 @@ class WinEvtSubscription implements AutoCloseable {
      * @throws IllegalStateException si EvtSubscribe échoue
      */
     WinEvtSubscription(String channelPath, String xpathQuery, Consumer<String> xmlConsumer) {
+        this(channelPath, xpathQuery, xmlConsumer, null);
+    }
+
+    /**
+     * Crée et démarre immédiatement l'abonnement, avec support de session distante.
+     *
+     * <p>Si {@code remoteHost} est non null/blanc, une session RPC est ouverte vers
+     * ce serveur en utilisant les identifiants Kerberos du compte courant.
+     * Le compte doit être membre du groupe <em>Event Log Readers</em> sur le serveur distant.
+     *
+     * @param channelPath  canal WEF, ex: "ForwardedEvents"
+     * @param xpathQuery   filtre XPath, ex: "*[System[EventID=4720 or EventID=4728]]"
+     * @param xmlConsumer  appelé pour chaque événement livré (XML brut complet)
+     * @param remoteHost   hostname ou IP du collecteur WEF distant, null = local
+     * @throws IllegalStateException si EvtOpenSession ou EvtSubscribe échoue
+     */
+    WinEvtSubscription(String channelPath, String xpathQuery, Consumer<String> xmlConsumer,
+                       String remoteHost) {
         WinEvtApi api = WinEvtApi.INSTANCE;
+
+        // Ouvrir une session distante si nécessaire
+        if (remoteHost != null && !remoteHost.isBlank()) {
+            WinEvtApi.EvtRpcLogin login = new WinEvtApi.EvtRpcLogin();
+            login.server   = new WString(remoteHost);
+            login.user     = null;
+            login.domain   = null;
+            login.password = null;
+            login.flags    = WinEvtApi.EVT_RPC_LOGIN_AUTH_DEFAULT;
+            login.write();
+
+            this.sessionHandle = api.EvtOpenSession(
+                    WinEvtApi.EVT_LOGIN_CLASS_RPC_LOGIN, login.getPointer(), 0, 0);
+
+            if (sessionHandle == null) {
+                throw new IllegalStateException(
+                        "EvtOpenSession échoué pour l'hôte '" + remoteHost +
+                        "' (GetLastError=" + Native.getLastError() + "). " +
+                        "Vérifiez que le compte courant est membre d'Event Log Readers sur " + remoteHost);
+            }
+            log.info("Session RPC ouverte vers {}", remoteHost);
+        } else {
+            this.sessionHandle = null;
+        }
 
         this.callback = (action, userContext, eventHandle) -> {
             if (action == WinEvtApi.EVT_SUBSCRIBE_ACTION_DELIVER) {
@@ -60,7 +104,7 @@ class WinEvtSubscription implements AutoCloseable {
         };
 
         this.subscriptionHandle = api.EvtSubscribe(
-                null,
+                sessionHandle,
                 null,
                 new WString(channelPath),
                 new WString(xpathQuery),
@@ -81,8 +125,12 @@ class WinEvtSubscription implements AutoCloseable {
     public void close() {
         if (subscriptionHandle != null) {
             WinEvtApi.INSTANCE.EvtClose(subscriptionHandle);
-            log.info("Abonnement WEF fermé");
         }
+        if (sessionHandle != null) {
+            WinEvtApi.INSTANCE.EvtClose(sessionHandle);
+            log.info("Session RPC WEF distante fermée");
+        }
+        log.info("Abonnement WEF fermé");
     }
 
     // --------------------------------------------------------------------------

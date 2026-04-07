@@ -38,7 +38,8 @@
     .\Test-WefEvents.ps1 -OUPath "OU=Test,DC=iap,DC=local" -WaitSeconds 1
 #>
 param(
-    [string]$OUPath     = "CN=Users,DC=iap,DC=local",
+    [string]$OUPath      = "CN=Users,DC=iap,DC=local",
+    [string]$Server      = "DC01.iap.local",
     [int]   $WaitSeconds = 2
 )
 
@@ -72,14 +73,14 @@ function Cleanup {
     Write-Host "`n[CLEANUP] Suppression des objets de test..." -ForegroundColor Yellow
     foreach ($obj in @($userRenamed, $user)) {
         try {
-            Get-ADUser -Identity $obj -ErrorAction SilentlyContinue |
+            Get-ADUser -Identity $obj -Server $Server -ErrorAction SilentlyContinue |
                 Remove-ADUser -Confirm:$false
             Write-Host "  Utilisateur $obj supprimé" -ForegroundColor DarkGray
         } catch { }
     }
     foreach ($grp in @($grpG, $grpL, $grpU)) {
         try {
-            Get-ADGroup -Identity $grp -ErrorAction SilentlyContinue |
+            Get-ADGroup -Identity $grp -Server $Server -ErrorAction SilentlyContinue |
                 Remove-ADGroup -Confirm:$false
             Write-Host "  Groupe $grp supprimé" -ForegroundColor DarkGray
         } catch { }
@@ -105,13 +106,14 @@ try {
         -AccountPassword $secPwd `
         -Enabled         $false `
         -Path            $OUPath `
-        -Description     "WEF Test Account - $suffix"
+        -Description     "WEF Test Account - $suffix" `
+        -Server          $Server
 
     # ------------------------------------------------------------------
     # Event 4722 — Compte activé
     # ------------------------------------------------------------------
     Step 4722 "Activation du compte : $user"
-    Enable-ADAccount -Identity $user
+    Enable-ADAccount -Identity $user -Server $Server
 
     # ------------------------------------------------------------------
     # Event 4738 — Modification d'attributs
@@ -120,25 +122,26 @@ try {
     Set-ADUser -Identity $user `
         -Department "WEF-Test" `
         -Title      "Test IAM Events" `
-        -Office     "Lab"
+        -Office     "Lab" `
+        -Server     $Server
 
     # ------------------------------------------------------------------
     # Event 4781 — Renommage du compte
     # ------------------------------------------------------------------
     Step 4781 "Renommage du compte : $user → $userRenamed"
-    $oldDN = (Get-ADUser -Identity $user).DistinguishedName
-    Rename-ADObject -Identity $oldDN -NewName $userRenamed
+    $oldDN = (Get-ADUser -Identity $user -Server $Server).DistinguishedName
+    Rename-ADObject -Identity $oldDN -NewName $userRenamed -Server $Server
     # Le DN a changé (CN= mis à jour) mais SamAccountName est encore l'ancien
     # On reconstruit le nouveau DN pour cibler l'objet sans ambiguïté
     $newDN = "CN=$userRenamed," + ($oldDN -replace '^CN=[^,]+,', '')
     # Mise à jour du SamAccountName (génère un 4738 supplémentaire)
-    Set-ADUser -Identity $newDN -SamAccountName $userRenamed
+    Set-ADUser -Identity $newDN -SamAccountName $userRenamed -Server $Server
 
     # ------------------------------------------------------------------
     # Event 4725 — Désactivation
     # ------------------------------------------------------------------
     Step 4725 "Désactivation du compte : $userRenamed"
-    Disable-ADAccount -Identity $userRenamed
+    Disable-ADAccount -Identity $userRenamed -Server $Server
 
     # ------------------------------------------------------------------
     # Event 4727 — Création groupe global de sécurité
@@ -150,25 +153,26 @@ try {
         -GroupScope    Global `
         -GroupCategory Security `
         -Path          $OUPath `
-        -Description   "WEF Test Global Group - $suffix"
+        -Description   "WEF Test Global Group - $suffix" `
+        -Server        $Server
 
     # ------------------------------------------------------------------
     # Event 4728 — Ajout membre au groupe global
     # ------------------------------------------------------------------
     Step 4728 "Ajout de $userRenamed au groupe global : $grpG"
-    Add-ADGroupMember -Identity $grpG -Members $userRenamed
+    Add-ADGroupMember -Identity $grpG -Members $userRenamed -Server $Server
 
     # ------------------------------------------------------------------
     # Event 4729 — Retrait membre du groupe global
     # ------------------------------------------------------------------
     Step 4729 "Retrait de $userRenamed du groupe global : $grpG"
-    Remove-ADGroupMember -Identity $grpG -Members $userRenamed -Confirm:$false
+    Remove-ADGroupMember -Identity $grpG -Members $userRenamed -Server $Server -Confirm:$false
 
     # ------------------------------------------------------------------
     # Event 4730 — Suppression groupe global
     # ------------------------------------------------------------------
     Step 4730 "Suppression du groupe global : $grpG"
-    Remove-ADGroup -Identity $grpG -Confirm:$false
+    Remove-ADGroup -Identity $grpG -Server $Server -Confirm:$false
 
     # ------------------------------------------------------------------
     # Event 4731 — Création groupe local de sécurité
@@ -180,25 +184,26 @@ try {
         -GroupScope    DomainLocal `
         -GroupCategory Security `
         -Path          $OUPath `
-        -Description   "WEF Test Local Group - $suffix"
+        -Description   "WEF Test Local Group - $suffix" `
+        -Server        $Server
 
     # ------------------------------------------------------------------
     # Event 4732 — Ajout membre au groupe local
     # ------------------------------------------------------------------
     Step 4732 "Ajout de $userRenamed au groupe local : $grpL"
-    Add-ADGroupMember -Identity $grpL -Members $userRenamed
+    Add-ADGroupMember -Identity $grpL -Members $userRenamed -Server $Server
 
     # ------------------------------------------------------------------
     # Event 4733 — Retrait membre du groupe local
     # ------------------------------------------------------------------
     Step 4733 "Retrait de $userRenamed du groupe local : $grpL"
-    Remove-ADGroupMember -Identity $grpL -Members $userRenamed -Confirm:$false
+    Remove-ADGroupMember -Identity $grpL -Members $userRenamed -Server $Server -Confirm:$false
 
     # ------------------------------------------------------------------
     # Event 4734 — Suppression groupe local
     # ------------------------------------------------------------------
     Step 4734 "Suppression du groupe local : $grpL"
-    Remove-ADGroup -Identity $grpL -Confirm:$false
+    Remove-ADGroup -Identity $grpL -Server $Server -Confirm:$false
 
     # ------------------------------------------------------------------
     # Event 4754 — Création groupe universel de sécurité
@@ -210,31 +215,32 @@ try {
         -GroupScope    Universal `
         -GroupCategory Security `
         -Path          $OUPath `
-        -Description   "WEF Test Universal Group - $suffix"
+        -Description   "WEF Test Universal Group - $suffix" `
+        -Server        $Server
 
     # ------------------------------------------------------------------
     # Event 4756 — Ajout membre au groupe universel
     # ------------------------------------------------------------------
     Step 4756 "Ajout de $userRenamed au groupe universel : $grpU"
-    Add-ADGroupMember -Identity $grpU -Members $userRenamed
+    Add-ADGroupMember -Identity $grpU -Members $userRenamed -Server $Server
 
     # ------------------------------------------------------------------
     # Event 4757 — Retrait membre du groupe universel
     # ------------------------------------------------------------------
     Step 4757 "Retrait de $userRenamed du groupe universel : $grpU"
-    Remove-ADGroupMember -Identity $grpU -Members $userRenamed -Confirm:$false
+    Remove-ADGroupMember -Identity $grpU -Members $userRenamed -Server $Server -Confirm:$false
 
     # ------------------------------------------------------------------
     # Event 4758 — Suppression groupe universel
     # ------------------------------------------------------------------
     Step 4758 "Suppression du groupe universel : $grpU"
-    Remove-ADGroup -Identity $grpU -Confirm:$false
+    Remove-ADGroup -Identity $grpU -Server $Server -Confirm:$false
 
     # ------------------------------------------------------------------
     # Event 4726 — Suppression du compte utilisateur
     # ------------------------------------------------------------------
     Step 4726 "Suppression du compte utilisateur : $userRenamed"
-    Remove-ADUser -Identity $userRenamed -Confirm:$false
+    Remove-ADUser -Identity $userRenamed -Server $Server -Confirm:$false
 
     Write-Host "`n╔══════════════════════════════════════════════════════════════╗" -ForegroundColor Green
     Write-Host "║  Tous les événements ont été déclenchés avec succès.         ║" -ForegroundColor Green

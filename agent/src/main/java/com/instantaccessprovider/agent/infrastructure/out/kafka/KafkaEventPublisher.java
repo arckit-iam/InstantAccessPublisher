@@ -69,6 +69,7 @@ public class KafkaEventPublisher implements EventPublisher {
                         event.sourceId(),
                         event.sourceType().name().toLowerCase(),
                         event.nativeEventId(),
+                        event.nativeEventType(),
                         event.nativePayload(),
                         event.detectedAt(),
                         event.deduplicationKey(),

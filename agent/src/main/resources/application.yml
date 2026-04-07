@@ -48,6 +48,9 @@ iap:
         event-ids: [4720, 4722, 4725, 4726, 4727, 4728, 4729, 4730,
                     4731, 4732, 4733, 4734, 4738, 4754, 4756, 4757, 4758, 4781]
         source-id: "${IAP_WEF_SOURCE_ID:ad://change.me}"
+        # Hôte distant où lire ForwardedEvents (ex: WEC01 ou 192.168.10.20).
+        # Laisser vide si l'agent tourne directement sur le collecteur WEF.
+        remote-host: "${IAP_WEF_REMOTE_HOST:}"
       syslog:
         enabled: "${IAP_AGENT_ADAPTERS_SYSLOG_ENABLED:false}"
         listen-port: "${IAP_SYSLOG_PORT:6514}"

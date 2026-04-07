@@ -114,7 +114,7 @@ class WefEventProcessorTest {
         return new AgentProperties(
                 "test-agent",
                 new AgentProperties.AdaptersProperties(
-                        new AgentProperties.WefProperties(true, "ForwardedEvents", eventIds, "ad://iap.local"),
+                        new AgentProperties.WefProperties(true, "ForwardedEvents", eventIds, "ad://iap.local", null),
                         null, null, null
                 ),
                 List.of()
@@ -219,6 +219,18 @@ class WefEventProcessorTest {
         assertThat(captor.getValue().detectedAt()).isNotNull();
     }
 
+    @Test
+    void process_nativeEventType_isWindowsEventId() {
+        EventCollectionUseCase useCase = mock(EventCollectionUseCase.class);
+        ArgumentCaptor<RawIamEvent> captor = ArgumentCaptor.forClass(RawIamEvent.class);
+        WefEventProcessor processor = processorWith(useCase, List.of(4720));
+
+        processor.process(EVENT_4720);
+
+        verify(useCase).handle(captor.capture());
+        assertThat(captor.getValue().nativeEventType()).isEqualTo("4720");
+    }
+
     // ---------------------------------------------------------------------------
     // Tests : résolution du ResourceContext
     // ---------------------------------------------------------------------------
@@ -239,7 +251,7 @@ class WefEventProcessorTest {
                 "test-agent",
                 new AgentProperties.AdaptersProperties(
                         new AgentProperties.WefProperties(true, "ForwardedEvents",
-                                List.of(4728), "ad://iap.local"),
+                                List.of(4728), "ad://iap.local", null),
                         null, null, null
                 ),
                 List.of(rule)
@@ -284,7 +296,7 @@ class WefEventProcessorTest {
                 "test-agent",
                 new AgentProperties.AdaptersProperties(
                         new AgentProperties.WefProperties(true, "ForwardedEvents",
-                                List.of(4728), "ad://iap.local"),
+                                List.of(4728), "ad://iap.local", null),
                         null, null, null
                 ),
                 List.of(rule)

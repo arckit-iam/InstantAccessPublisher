@@ -60,14 +60,21 @@ public class WefAdapter implements InputAdapter {
         }
 
         String xpathQuery = buildXpathQuery(properties.eventIds());
+        String remoteHost = properties.remoteHost();
         try {
             subscription = new WinEvtSubscription(
                     properties.channelName(),
                     xpathQuery,
-                    processor::process
+                    processor::process,
+                    remoteHost
             );
-            log.info("WEF adapter démarré — canal={} eventIds={}",
-                     properties.channelName(), processor.allowedEventIds());
+            if (remoteHost != null && !remoteHost.isBlank()) {
+                log.info("WEF adapter démarré — hôte={} canal={} eventIds={}",
+                         remoteHost, properties.channelName(), processor.allowedEventIds());
+            } else {
+                log.info("WEF adapter démarré — canal={} eventIds={}",
+                         properties.channelName(), processor.allowedEventIds());
+            }
         } catch (UnsatisfiedLinkError e) {
             throw new IllegalStateException(
                     "wevtapi.dll non disponible. L'agent WEF doit s'exécuter sur Windows.", e);

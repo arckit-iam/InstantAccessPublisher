@@ -1,0 +1,39 @@
+name: Deploy
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: prod-lab
+
+    steps:
+      - name: Download stable artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: iap-agent-${{ inputs.version }}
+
+      - name: Copy jar to prod-lab
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.PRODLAB_HOST }}
+          username: ${{ secrets.PRODLAB_USER }}
+          key: ${{ secrets.PRODLAB_SSH_KEY }}
+          source: "iap-agent-${{ inputs.version }}.jar"
+          target: ${{ secrets.PRODLAB_DEPLOY_PATH }}
+
+      - name: Restart agent service on prod-lab
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PRODLAB_HOST }}
+          username: ${{ secrets.PRODLAB_USER }}
+          key: ${{ secrets.PRODLAB_SSH_KEY }}
+          script: |
+            Copy-Item "${{ secrets.PRODLAB_DEPLOY_PATH }}\iap-agent-${{ inputs.version }}.jar" `
+                      "${{ secrets.PRODLAB_DEPLOY_PATH }}\iap-agent.jar" -Force
+            Restart-Service IapAgent

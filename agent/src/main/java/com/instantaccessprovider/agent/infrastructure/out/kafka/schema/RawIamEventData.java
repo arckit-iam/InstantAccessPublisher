@@ -17,6 +17,7 @@ public record RawIamEventData(
         String sourceId,
         String sourceType,
         String nativeEventId,
+        @Nullable String nativeEventType,
         String nativePayload,
         Instant detectedAt,
         String deduplicationKey,

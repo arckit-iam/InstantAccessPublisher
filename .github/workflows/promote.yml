@@ -1,0 +1,73 @@
+name: Promote
+
+on:
+  release:
+    types: [prereleased, released]
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.VERSION }}
+
+    steps:
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      # ── Pre-release : dev → rc ──────────────────────────────────────────────
+      - name: Download dev artifact
+        if: github.event.action == 'prereleased'
+        uses: actions/download-artifact@v4
+        with:
+          name: iap-agent-${{ steps.version.outputs.VERSION }}-dev
+
+      - name: Promote dev → rc
+        if: github.event.action == 'prereleased'
+        run: |
+          mv iap-agent-${{ steps.version.outputs.VERSION }}-dev.jar \
+             iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar
+
+      - name: Upload rc artifact
+        if: github.event.action == 'prereleased'
+        uses: actions/upload-artifact@v4
+        with:
+          name: iap-agent-${{ steps.version.outputs.VERSION }}-rc
+          path: iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar
+          retention-days: 90
+
+      # ── Release : rc → stable ───────────────────────────────────────────────
+      - name: Download rc artifact
+        if: github.event.action == 'released'
+        uses: actions/download-artifact@v4
+        with:
+          name: iap-agent-${{ steps.version.outputs.VERSION }}-rc
+
+      - name: Promote rc → stable
+        if: github.event.action == 'released'
+        run: |
+          mv iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar \
+             iap-agent-${{ steps.version.outputs.VERSION }}.jar
+
+      - name: Upload stable artifact
+        if: github.event.action == 'released'
+        uses: actions/upload-artifact@v4
+        with:
+          name: iap-agent-${{ steps.version.outputs.VERSION }}
+          path: iap-agent-${{ steps.version.outputs.VERSION }}.jar
+          retention-days: 365
+
+      - name: Attach jar to GitHub Release
+        if: github.event.action == 'released'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: iap-agent-${{ steps.version.outputs.VERSION }}.jar
+
+  # ── Deploy (release uniquement) ─────────────────────────────────────────────
+  deploy:
+    needs: promote
+    if: github.event.action == 'released'
+    uses: ./.github/workflows/deploy.yml
+    with:
+      version: ${{ needs.promote.outputs.version }}
+    secrets: inherit

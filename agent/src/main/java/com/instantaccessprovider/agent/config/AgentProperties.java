@@ -83,7 +83,9 @@ public record AgentProperties(
             Boolean enabled,
             String channelName,
             List<Integer> eventIds,
-            String sourceId
+            String sourceId,
+            /** Hôte distant où lire ForwardedEvents (ex: WEC01). Null = canal local. */
+            String remoteHost
     ) {
         public boolean isEnabled() { return Boolean.TRUE.equals(enabled); }
     }
