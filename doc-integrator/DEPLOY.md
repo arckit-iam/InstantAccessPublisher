@@ -110,9 +110,24 @@ gère automatiquement les deux cas. Pour une installation manuelle initiale :
 - [NSSM](https://nssm.cc/) installé et dans le `PATH`
 - Java 21 JRE installé et `java` dans le `PATH`
 - Compte de service `CORP\svc-iap` membre du groupe **Event Log Readers**
+- **GitHub Actions self-hosted runner** installé sur WEC01 avec le label `wec`
 
 ```powershell
-# Vérification rapide
+# Depuis GitHub : Settings → Actions → Runners → New self-hosted runner
+# Choisir Windows, copier les commandes générées. Exemple :
+Mkdir C:\actions-runner ; cd C:\actions-runner
+Invoke-WebRequest -Uri https://github.com/actions/runner/releases/download/v2.x.x/actions-runner-win-x64-2.x.x.zip -OutFile runner.zip
+Expand-Archive runner.zip -DestinationPath .
+# Configurer avec le token fourni par GitHub et le label 'wec'
+.\config.cmd --url https://github.com/<org>/<repo> --token <TOKEN> --labels wec --runasservice
+# Le runner démarre automatiquement comme service Windows
+```
+
+> Le runner s'exécutant *sur* WEC01, aucune connectivité SSH depuis l'extérieur n'est nécessaire.
+> Il se connecte **sortant** vers `github.com` (HTTPS 443) — le pare-feu doit autoriser ce flux.
+
+```powershell
+# Vérifications rapides
 Get-Command nssm ; java -version
 New-Item -ItemType Directory -Path C:\iap\logs -Force
 ```
@@ -137,16 +152,14 @@ aussi bien une installation initiale qu'une mise à jour.
 
 ### Variables et Secrets GitHub à configurer
 
-#### Connexion au serveur *(utilisées par le runner CI pour accéder à WEC01)*
+#### Accès au serveur *(identifient où déployer)*
 
 | Clé | Type GitHub | Exemple | Description |
 |---|---|---|---|
-| `PRODLAB_HOST` | Variable | `wec01.corp.client.com` | Hostname ou IP du serveur WEC |
-| `PRODLAB_USER` | Variable | `svc-deploy` | Utilisateur SSH sur WEC01 |
 | `PRODLAB_DEPLOY_PATH` | Variable | `C:\iap` | Dossier de déploiement sur WEC01 |
-| `PRODLAB_SSH_PRIVATE_KEY` | **Secret** | *(clé privée ed25519)* | Clé privée SSH du compte de déploiement |
 
-> La clé publique correspondante doit être dans `C:\Users\svc-deploy\.ssh\authorized_keys` sur WEC01.
+> Plus de clé SSH nécessaire : le runner GitHub Actions tourne directement sur WEC01.
+> Il se connecte **sortant** vers `github.com` (HTTPS 443) — aucun port entrant à ouvrir.
 
 #### Configuration de l'application *(injectées dans le service NSSM à chaque deploy)*
 

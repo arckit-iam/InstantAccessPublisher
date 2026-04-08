@@ -6,9 +6,12 @@ on:
       version:
         required: true
         type: string
+      runner_label:
+        description: "Label du self-hosted runner cible (ex: wec01, wec-client-x)"
+        required: false
+        type: string
+        default: wec
     secrets:
-      PRODLAB_SSH_PRIVATE_KEY:
-        required: true
       IAP_LDAP_BIND_PASSWORD:           # sensible — uniquement si DirSync activé
         required: false
       IAP_SERVICE_ACCOUNT_PASSWORD:     # mot de passe du compte Windows — init uniquement
@@ -16,7 +19,8 @@ on:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    # Le runner tourne directement sur WEC01 (ZeroTier) — pas de SSH/SCP nécessaire
+    runs-on: [self-hosted, "${{ inputs.runner_label }}"]
     environment: prod-lab
 
     steps:
@@ -28,71 +32,76 @@ jobs:
         with:
           name: iap-agent-${{ inputs.version }}
 
-      - name: Ensure deploy path exists on prod-lab
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ vars.PRODLAB_HOST }}
-          username: ${{ vars.PRODLAB_USER }}
-          key: ${{ secrets.PRODLAB_SSH_PRIVATE_KEY }}
-          script: New-Item -ItemType Directory -Path "${{ vars.PRODLAB_DEPLOY_PATH }}" -Force | Out-Null
+      - name: Deploy and configure agent
+        shell: powershell
+        env:
+          DEPLOY_PATH:                          ${{ vars.PRODLAB_DEPLOY_PATH }}
+          VERSION:                              ${{ inputs.version }}
+          IAP_INSTANCE_ID:                      ${{ vars.IAP_INSTANCE_ID }}
+          SPRING_KAFKA_BOOTSTRAP_SERVERS:       ${{ vars.SPRING_KAFKA_BOOTSTRAP_SERVERS }}
+          IAP_AGENT_ADAPTERS_WEF_ENABLED:       ${{ vars.IAP_AGENT_ADAPTERS_WEF_ENABLED }}
+          IAP_WEF_SOURCE_ID:                    ${{ vars.IAP_WEF_SOURCE_ID }}
+          IAP_WEF_REMOTE_HOST:                  ${{ vars.IAP_WEF_REMOTE_HOST }}
+          IAP_AGENT_ADAPTERS_DIRSYNC_ENABLED:   ${{ vars.IAP_AGENT_ADAPTERS_DIRSYNC_ENABLED }}
+          IAP_LDAP_URL:                         ${{ vars.IAP_LDAP_URL }}
+          IAP_LDAP_BASE_DN:                     ${{ vars.IAP_LDAP_BASE_DN }}
+          IAP_LDAP_BIND_DN:                     ${{ vars.IAP_LDAP_BIND_DN }}
+          IAP_LDAP_BIND_PASSWORD:               ${{ secrets.IAP_LDAP_BIND_PASSWORD }}
+          IAP_LDAP_POLL_INTERVAL:               ${{ vars.IAP_LDAP_POLL_INTERVAL }}
+          IAP_AGENT_ADAPTERS_WEBHOOK_ENABLED:   ${{ vars.IAP_AGENT_ADAPTERS_WEBHOOK_ENABLED }}
+          IAP_WEBHOOK_PORT:                     ${{ vars.IAP_WEBHOOK_PORT }}
+          IAP_AGENT_ADAPTERS_SYSLOG_ENABLED:    ${{ vars.IAP_AGENT_ADAPTERS_SYSLOG_ENABLED }}
+          IAP_SYSLOG_PORT:                      ${{ vars.IAP_SYSLOG_PORT }}
+          IAP_LOG_LEVEL:                        ${{ vars.IAP_LOG_LEVEL }}
+          IAP_CONFIG_FILE:                      ${{ vars.IAP_CONFIG_FILE }}
+          SPRING_PROFILES_ACTIVE:               ${{ vars.SPRING_PROFILES_ACTIVE }}
+          IAP_SERVICE_ACCOUNT:                  ${{ vars.IAP_SERVICE_ACCOUNT }}
+          IAP_SERVICE_ACCOUNT_PASSWORD:         ${{ secrets.IAP_SERVICE_ACCOUNT_PASSWORD }}
+        run: |
+          # ── Préparer le dossier de déploiement ───────────────────────────────
+          New-Item -ItemType Directory -Path $env:DEPLOY_PATH -Force | Out-Null
 
-      - name: Copy jar and rules to prod-lab
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ vars.PRODLAB_HOST }}
-          username: ${{ vars.PRODLAB_USER }}
-          key: ${{ secrets.PRODLAB_SSH_PRIVATE_KEY }}
-          source: "iap-agent-${{ inputs.version }}.jar,config/prod-lab/rules.yml"
-          target: ${{ vars.PRODLAB_DEPLOY_PATH }}
-          strip_components: 2   # supprime le préfixe config/prod-lab/ → rules.yml posé directement dans DEPLOY_PATH
+          # ── Copier le jar et les règles ──────────────────────────────────────
+          Copy-Item "iap-agent-$env:VERSION.jar"  "$env:DEPLOY_PATH\" -Force
+          Copy-Item "config\prod-lab\rules.yml"   "$env:DEPLOY_PATH\" -Force
 
-      - name: Configure and restart agent service on prod-lab
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ vars.PRODLAB_HOST }}
-          username: ${{ vars.PRODLAB_USER }}
-          key: ${{ secrets.PRODLAB_SSH_PRIVATE_KEY }}
-          script: |
-            $deployPath = "${{ vars.PRODLAB_DEPLOY_PATH }}"
+          # ── Première installation si le service n'existe pas encore ──────────
+          if (-not (Get-Service IapAgent -ErrorAction SilentlyContinue)) {
+            $javaExe = (Get-Command java -ErrorAction Stop).Source
+            New-Item -ItemType Directory -Path "$env:DEPLOY_PATH\logs" -Force | Out-Null
+            & nssm install IapAgent $javaExe
+            & nssm set IapAgent AppParameters "-jar $env:DEPLOY_PATH\iap-agent.jar"
+            & nssm set IapAgent AppDirectory  $env:DEPLOY_PATH
+            & nssm set IapAgent AppStdout     "$env:DEPLOY_PATH\logs\iap-agent.log"
+            & nssm set IapAgent AppStderr     "$env:DEPLOY_PATH\logs\iap-agent-error.log"
+            & nssm set IapAgent ObjectName    $env:IAP_SERVICE_ACCOUNT $env:IAP_SERVICE_ACCOUNT_PASSWORD
+          }
 
-            # ── Première installation si le service n'existe pas encore ──────────
-            if (-not (Get-Service IapAgent -ErrorAction SilentlyContinue)) {
-              $javaExe = (Get-Command java -ErrorAction Stop).Source
-              New-Item -ItemType Directory -Path "$deployPath\logs" -Force | Out-Null
-              & nssm install IapAgent $javaExe
-              & nssm set IapAgent AppParameters  "-jar $deployPath\iap-agent.jar"
-              & nssm set IapAgent AppDirectory   $deployPath
-              & nssm set IapAgent AppStdout      "$deployPath\logs\iap-agent.log"
-              & nssm set IapAgent AppStderr      "$deployPath\logs\iap-agent-error.log"
-              & nssm set IapAgent ObjectName     "${{ vars.IAP_SERVICE_ACCOUNT }}" `
-                                                 "${{ secrets.IAP_SERVICE_ACCOUNT_PASSWORD }}"
-            }
+          # ── Mettre à jour le jar actif (init et update) ──────────────────────
+          Copy-Item "$env:DEPLOY_PATH\iap-agent-$env:VERSION.jar" `
+                    "$env:DEPLOY_PATH\iap-agent.jar" -Force
 
-            # ── Mettre à jour le jar actif (init et update) ──────────────────────
-            Copy-Item "$deployPath\iap-agent-${{ inputs.version }}.jar" `
-                      "$deployPath\iap-agent.jar" -Force
+          # ── Synchroniser toutes les variables (env: block = source de vérité) 
+          & nssm set IapAgent AppEnvironmentExtra `
+            "IAP_INSTANCE_ID=$env:IAP_INSTANCE_ID" `
+            "SPRING_KAFKA_BOOTSTRAP_SERVERS=$env:SPRING_KAFKA_BOOTSTRAP_SERVERS" `
+            "IAP_AGENT_ADAPTERS_WEF_ENABLED=$env:IAP_AGENT_ADAPTERS_WEF_ENABLED" `
+            "IAP_WEF_SOURCE_ID=$env:IAP_WEF_SOURCE_ID" `
+            "IAP_WEF_REMOTE_HOST=$env:IAP_WEF_REMOTE_HOST" `
+            "IAP_AGENT_ADAPTERS_DIRSYNC_ENABLED=$env:IAP_AGENT_ADAPTERS_DIRSYNC_ENABLED" `
+            "IAP_LDAP_URL=$env:IAP_LDAP_URL" `
+            "IAP_LDAP_BASE_DN=$env:IAP_LDAP_BASE_DN" `
+            "IAP_LDAP_BIND_DN=$env:IAP_LDAP_BIND_DN" `
+            "IAP_LDAP_BIND_PASSWORD=$env:IAP_LDAP_BIND_PASSWORD" `
+            "IAP_LDAP_POLL_INTERVAL=$env:IAP_LDAP_POLL_INTERVAL" `
+            "IAP_AGENT_ADAPTERS_WEBHOOK_ENABLED=$env:IAP_AGENT_ADAPTERS_WEBHOOK_ENABLED" `
+            "IAP_WEBHOOK_PORT=$env:IAP_WEBHOOK_PORT" `
+            "IAP_AGENT_ADAPTERS_SYSLOG_ENABLED=$env:IAP_AGENT_ADAPTERS_SYSLOG_ENABLED" `
+            "IAP_SYSLOG_PORT=$env:IAP_SYSLOG_PORT" `
+            "IAP_LOG_LEVEL=$env:IAP_LOG_LEVEL" `
+            "IAP_CONFIG_FILE=$env:IAP_CONFIG_FILE" `
+            "SPRING_PROFILES_ACTIVE=$env:SPRING_PROFILES_ACTIVE"
 
-            # ── Synchroniser toutes les variables (GitHub Variables = source de vérité)
-            & nssm set IapAgent AppEnvironmentExtra `
-              "IAP_INSTANCE_ID=${{ vars.IAP_INSTANCE_ID }}" `
-              "SPRING_KAFKA_BOOTSTRAP_SERVERS=${{ vars.SPRING_KAFKA_BOOTSTRAP_SERVERS }}" `
-              "IAP_AGENT_ADAPTERS_WEF_ENABLED=${{ vars.IAP_AGENT_ADAPTERS_WEF_ENABLED }}" `
-              "IAP_WEF_SOURCE_ID=${{ vars.IAP_WEF_SOURCE_ID }}" `
-              "IAP_WEF_REMOTE_HOST=${{ vars.IAP_WEF_REMOTE_HOST }}" `
-              "IAP_AGENT_ADAPTERS_DIRSYNC_ENABLED=${{ vars.IAP_AGENT_ADAPTERS_DIRSYNC_ENABLED }}" `
-              "IAP_LDAP_URL=${{ vars.IAP_LDAP_URL }}" `
-              "IAP_LDAP_BASE_DN=${{ vars.IAP_LDAP_BASE_DN }}" `
-              "IAP_LDAP_BIND_DN=${{ vars.IAP_LDAP_BIND_DN }}" `
-              "IAP_LDAP_BIND_PASSWORD=${{ secrets.IAP_LDAP_BIND_PASSWORD }}" `
-              "IAP_LDAP_POLL_INTERVAL=${{ vars.IAP_LDAP_POLL_INTERVAL }}" `
-              "IAP_AGENT_ADAPTERS_WEBHOOK_ENABLED=${{ vars.IAP_AGENT_ADAPTERS_WEBHOOK_ENABLED }}" `
-              "IAP_WEBHOOK_PORT=${{ vars.IAP_WEBHOOK_PORT }}" `
-              "IAP_AGENT_ADAPTERS_SYSLOG_ENABLED=${{ vars.IAP_AGENT_ADAPTERS_SYSLOG_ENABLED }}" `
-              "IAP_SYSLOG_PORT=${{ vars.IAP_SYSLOG_PORT }}" `
-              "IAP_LOG_LEVEL=${{ vars.IAP_LOG_LEVEL }}" `
-              "IAP_CONFIG_FILE=${{ vars.IAP_CONFIG_FILE }}" `
-              "SPRING_PROFILES_ACTIVE=${{ vars.SPRING_PROFILES_ACTIVE }}"
-
-            # ── Démarrer ou redémarrer ────────────────────────────────────────────
-            Stop-Service IapAgent -Force -ErrorAction SilentlyContinue
-            Start-Service IapAgent
+          # ── Démarrer ou redémarrer ────────────────────────────────────────────
+          Stop-Service IapAgent -Force -ErrorAction SilentlyContinue
+          Start-Service IapAgent
