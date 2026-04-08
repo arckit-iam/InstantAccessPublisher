@@ -157,6 +157,7 @@ aussi bien une installation initiale qu'une mise à jour.
 | Clé | Type GitHub | Exemple | Description |
 |---|---|---|---|
 | `PRODLAB_DEPLOY_PATH` | Variable | `C:\iap` | Dossier de déploiement sur WEC01 |
+| `DEPLOY_RUNNER_LABEL` | Variable | `wec` | Label du self-hosted runner installé sur WEC01 — doit correspondre au `--labels` utilisé lors de l'installation du runner |
 
 > Plus de clé SSH nécessaire : le runner GitHub Actions tourne directement sur WEC01.
 > Il se connecte **sortant** vers `github.com` (HTTPS 443) — aucun port entrant à ouvrir.
