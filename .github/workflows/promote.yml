@@ -58,6 +58,21 @@ jobs:
                       ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-rc
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-rc
 
+      - name: Download config dev artifact
+        if: github.event.action == 'prereleased'
+        uses: actions/download-artifact@v4
+        with:
+          name: iap-config-${{ steps.version.outputs.VERSION }}-dev
+          path: iap-config-dev/
+
+      - name: Upload config rc artifact
+        if: github.event.action == 'prereleased'
+        uses: actions/upload-artifact@v4
+        with:
+          name: iap-config-${{ steps.version.outputs.VERSION }}-rc
+          path: iap-config-dev/
+          retention-days: 90
+
       # ── Release : rc → stable ───────────────────────────────────────────────
       - name: Download rc artifact
         if: github.event.action == 'released'
@@ -95,6 +110,21 @@ jobs:
                       ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Download config rc artifact
+        if: github.event.action == 'released'
+        uses: actions/download-artifact@v4
+        with:
+          name: iap-config-${{ steps.version.outputs.VERSION }}-rc
+          path: iap-config-rc/
+
+      - name: Upload config stable artifact
+        if: github.event.action == 'released'
+        uses: actions/upload-artifact@v4
+        with:
+          name: iap-config-${{ steps.version.outputs.VERSION }}
+          path: iap-config-rc/
+          retention-days: 365
 
   # ── Deploy (release uniquement) ─────────────────────────────────────────────
   deploy:

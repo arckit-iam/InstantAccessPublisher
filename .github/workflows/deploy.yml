@@ -24,13 +24,16 @@ jobs:
     environment: prod-lab
 
     steps:
-      - name: Checkout repository (pour récupérer config/prod-lab/rules.yml)
-        uses: actions/checkout@v4
-
       - name: Download stable artifact
         uses: actions/download-artifact@v4
         with:
           name: iap-agent-${{ inputs.version }}
+
+      - name: Download stable config artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: iap-config-${{ inputs.version }}
+          path: iap-config/
 
       - name: Deploy and configure agent
         shell: powershell
@@ -61,9 +64,9 @@ jobs:
           # ── Préparer le dossier de déploiement ───────────────────────────────
           New-Item -ItemType Directory -Path $env:DEPLOY_PATH -Force | Out-Null
 
-          # ── Copier le jar et les règles ──────────────────────────────────────
+          # ── Copier le jar et la config ───────────────────────────────────────
           Copy-Item "iap-agent-$env:VERSION.jar"  "$env:DEPLOY_PATH\" -Force
-          Copy-Item "config\prod-lab\rules.yml"   "$env:DEPLOY_PATH\" -Force
+          Copy-Item "iap-config\*"                "$env:DEPLOY_PATH\" -Recurse -Force
 
           # ── Première installation si le service n'existe pas encore ──────────
           if (-not (Get-Service IapAgent -ErrorAction SilentlyContinue)) {
