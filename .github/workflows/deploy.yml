@@ -28,6 +28,14 @@ jobs:
         with:
           name: iap-agent-${{ inputs.version }}
 
+      - name: Ensure deploy path exists on prod-lab
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ vars.PRODLAB_HOST }}
+          username: ${{ vars.PRODLAB_USER }}
+          key: ${{ secrets.PRODLAB_SSH_PRIVATE_KEY }}
+          script: New-Item -ItemType Directory -Path "${{ vars.PRODLAB_DEPLOY_PATH }}" -Force | Out-Null
+
       - name: Copy jar and rules to prod-lab
         uses: appleboy/scp-action@v0.1.7
         with:
