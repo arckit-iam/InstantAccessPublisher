@@ -21,7 +21,7 @@ jobs:
   deploy:
     # Le runner tourne directement sur WEC01 (ZeroTier) — pas de SSH/SCP nécessaire
     runs-on: [self-hosted, "${{ inputs.runner_label }}"]
-    environment: prod-lab
+    environment: prod
 
     steps:
       - name: Download stable artifact
