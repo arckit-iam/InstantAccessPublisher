@@ -4,12 +4,16 @@ param(
     [string]$Type
 )
 
-# Chemin du pom.xml
-$pomPath = "agent/pom.xml"
 
-# Récupère la version actuelle
-[xml]$pom = Get-Content $pomPath
-$currentVersion = $pom.project.version
+
+
+# Récupère le dernier tag git de la forme vX.Y.Z
+$lastTag = git tag --list "v*.*.*" --sort=-v:refname | Select-Object -First 1
+if (-not $lastTag) {
+    Write-Error "Aucun tag vX.Y.Z trouvé. Taguez d'abord une version initiale (ex: v0.1.0)."
+    exit 1
+}
+$currentVersion = $lastTag.TrimStart('v')
 
 # Découpe la version
 $versionParts = $currentVersion -split '\.'
@@ -25,14 +29,32 @@ switch ($Type) {
 
 $newVersion = "$major.$minor.$patch"
 
-# Met à jour le pom.xml
-mvn versions:set -DnewVersion=$newVersion
+# Push-Location (Split-Path -Path $pomPath -Parent)
+# # Applique la version Maven
+# $mvnArgs = @("versions:set", "-DnewVersion=$($newVersion)", "-DprocessAllModules=true", "-DgenerateBackupPoms=false")
+# mvn @mvnArgs
+  
+#   Pop-Location
+  
+# if ($LASTEXITCODE -ne 0) {
+#     Write-Error "Erreur lors de la mise à jour Maven. Restauration du pom.xml d'origine."
+#     if (Test-Path "$pomPath.versionsBackup") {
+#         Move-Item -Force "$pomPath.versionsBackup" $pomPath
+#     }
+#     exit 1
+# }
+
+# Vérifie si le tag existe déjà
+$tagName = "v$newVersion"
+if (git tag --list $tagName) {
+    Write-Error "Le tag $tagName existe déjà. Abandon."
+    exit 1
+}
 
 # Commit + tag
 $commitMsg = "chore: bump version to $newVersion"
-git add $pomPath
 git commit -m $commitMsg
-git tag "v$newVersion"
+git tag $tagName
 
 git push
 git push --tags
