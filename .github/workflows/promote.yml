@@ -7,13 +7,14 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/iap-agent
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # ⚡ Force Node.js 24
 
 jobs:
   promote:
     runs-on: ubuntu-latest
     permissions:
-      contents: read     # on lit les packages / artifacts
-      packages: write    # pour retagger Docker et jar
+      contents: read
+      packages: write
     outputs:
       version: ${{ steps.version.outputs.VERSION }}
 
@@ -29,18 +30,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # ── Pre-release : promote dev → rc ──────────────────────────────
+      # ── Prerelease: dev → rc
       - name: Promote jar dev → rc
         if: github.event.action == 'prereleased'
         run: |
-          echo "Promoting jar dev → rc"
-          # Télécharger le jar dev depuis GitHub Packages (Maven)
           mvn dependency:get \
             -DrepoUrl=https://maven.pkg.github.com/${{ github.repository_owner }}/${{ github.repository }} \
             -Dartifact=${{ github.repository_owner }}:${{ github.repository }}:${{ steps.version.outputs.VERSION }}-dev:jar \
             -Ddest=iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar
-          
-          # Optionnel: upload jar rc dans GitHub Packages
           mvn deploy:deploy-file \
             -Dfile=iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar \
             -DgroupId=${{ github.repository_owner }} \
@@ -58,18 +55,14 @@ jobs:
                       ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-rc
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-rc
 
-      # ── Release : promote rc → stable ───────────────────────────────
+      # ── Release: rc → stable
       - name: Promote jar rc → stable
         if: github.event.action == 'released'
         run: |
-          echo "Promoting jar rc → stable"
-          # Télécharger le jar rc depuis GitHub Packages
           mvn dependency:get \
             -DrepoUrl=https://maven.pkg.github.com/${{ github.repository_owner }}/${{ github.repository }} \
             -Dartifact=${{ github.repository_owner }}:${{ github.repository }}:${{ steps.version.outputs.VERSION }}-rc:jar \
             -Ddest=iap-agent-${{ steps.version.outputs.VERSION }}.jar
-
-          # Upload jar stable dans GitHub Packages
           mvn deploy:deploy-file \
             -Dfile=iap-agent-${{ steps.version.outputs.VERSION }}.jar \
             -DgroupId=${{ github.repository_owner }} \
@@ -90,7 +83,7 @@ jobs:
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
-  # ── Deploy ─────────────────────────────────────────────
+  # ── Deploy
   deploy:
     needs: promote
     if: github.event.action == 'released'

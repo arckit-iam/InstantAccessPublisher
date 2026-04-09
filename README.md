@@ -1,194 +1,21 @@
-# Instant Access Provider : Dossier d'Architecture — Plateforme IAM Event Streaming
+# INSTANTACCESSPUBLISHER
 
-## Objectif
+INSTANTACCESSPUBLISHER est une plateforme qui collecte, normalise et diffuse en temps réel les événements liés à la gestion des identités et des accès (IAM) provenant de différentes sources (Active Directory, applications, LDAP, Azure AD, etc.).
 
-Ce dossier décrit l'architecture d'une plateforme **générique** qui collecte en temps réel les événements de gestion d'identités et d'accès depuis **n'importe quelle source** (Active Directory, applications métier, LDAP, Azure AD…), les normalise en un modèle abstrait commun, et les **publie dans un bus de messages** (topic).
+## À quoi ça sert ?
+- Centraliser tous les événements d’identité et d’accès dans un format commun.
+- Faciliter la détection d’anomalies de sécurité (SOC, SIEM).
+- Synchroniser automatiquement les changements d’identités vers d’autres systèmes (ITSM, RH, Cloud, etc.).
 
-Deux familles de consommateurs sont adressées :
+## Pour qui ?
+- Les équipes sécurité (SOC, RSSI) pour surveiller et réagir rapidement aux incidents.
+- Les administrateurs IAM pour automatiser la gestion des droits et des accès.
+- Les intégrateurs qui veulent connecter facilement de nouvelles sources ou cibles d’identités.
 
-- **SOC** (Security Operations Center) — détection d'anomalies, alertes, corrélation SIEM.
-- **Synchronisation événementielle** — propagation des changements d'identités vers d'autres systèmes (IAM, ITSM, RH, Cloud IdP…).
+## Points forts
+- Compatible avec de nombreuses sources (AD, LDAP, applications, cloud…)
+- Modèle de données unifié et extensible
+- Publication des événements sur un bus de messages (Kafka, Event Hub…)
+- Pensé pour l’automatisation, la sécurité et l’évolutivité
 
-> **Principe fondateur** : un groupe de sécurité AD, un profil applicatif, un groupOfNames LDAP, un rôle AWS IAM sont tous la même entité abstraite : un **Entitlement**. La plateforme ne travaille qu'avec des `Identity`, des `Entitlement` et des `Assignment`.
-
----
-
-## Structure du dossier
-
-| Fichier | Contenu |
-|---|---|
-| `docs/00-modele-abstrait.md` | **Fondations** : modèle générique Identity / Entitlement / Assignment |
-| `docs/01-contexte-objectifs.md` | Contexte métier, parties prenantes, périmètre |
-| `docs/02-architecture-globale.md` | Vue d'ensemble, schéma de flux, composants |
-| `docs/03-collecte-ad.md` | Mécanismes de collecte des logs AD (WEF, Winlogbeat, DirSync) |
-| `docs/04-traitement-detection.md` | Pipeline de traitement, normalisation, détection des événements métier |
-| `docs/05-publication-messaging.md` | Choix du broker, topologie des topics `iam.*`, schémas CloudEvents |
-| `docs/06-soc-securite.md` | Cas d'usage SOC, règles de détection, intégration SIEM |
-| `docs/07-synchronisation.md` | Synchronisation événementielle, pattern Outbox, idempotence, replay |
-| `docs/08-choix-techno.md` | Comparatif technologique (Kafka vs Event Hub vs RabbitMQ…) |
-| `docs/09-securite-architecture.md` | Hardening, secrets, RBAC, chiffrement, audit de la plateforme |
-| `docs/10-roadmap.md` | Extensions futures : Entra ID, MFA events, UEBA |
-| `docs/11-adapter-sources.md` | **Extensibilité** : AD Adapter, App Adapter (webhook/CDC/polling), LDAP Adapter |
-
----
-
-## Vue macro (résumé)
-
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                        SOURCES (extensibles)                         │
-│  ┌────────────┐  ┌─────────────────┐  ┌───────────┐  ┌──────────┐  │
-│  │ Active Dir │  │  Application A  │  │   LDAP    │  │ Azure AD │  │
-│  │  (AD)      │  │  (profils appli)│  │ OpenLDAP  │  │ (v2)     │  │
-│  └─────┬──────┘  └────────┬────────┘  └─────┬─────┘  └────┬─────┘  │
-└────────╪─────────────────╪─────────────────╪─────────────╪─────────┘
-         │                  │                 │             │
-         ▼                  ▼                 ▼             ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│              ADAPTERS (1 par source, modèle générique)               │
-│         AD Adapter    App Adapter    LDAP Adapter    Entra Adapter   │
-│               ↓ Traduisent en Identity / Entitlement / Assignment    │
-└──────────────────────────────┬───────────────────────────────────────┘
-                               │ iam.raw.{source}
-                               ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│               PIPELINE (Normalisation + Détection)                   │
-│         CloudEvents iam.* → Enrichissement → Règles SOC              │
-└──────────┬───────────────────┬─────────────────────┬─────────────────┘
-           │                   │                     │
-           ▼                   ▼                     ▼
-  ┌────────────────┐  ┌────────────────┐  ┌──────────────────────┐
-  │  iam.alert     │  │  iam.identity  │  │  iam.entitlement     │
-  │  (SOC)         │  │  iam.assignment│  │  (groupes, profils)  │
-  └───────┬────────┘  └───────┬────────┘  └──────────┬───────────┘
-          │                   │                       │
-          ▼                   └───────────┬───────────┘
-  ┌───────────────┐                       ▼
-  │  SIEM / SOAR  │           ┌──────────────────────┐
-  │  (Splunk,     │           │  IAM / IdP / ITSM    │
-  │   Elastic,    │           │  (Okta, ServiceNow,  │
-  │   QRadar)     │           │   Système RH maison) │
-  └───────────────┘           └──────────────────────┘
-```
-
----
-
-## Les neuf événements génériques
-
-Quelle que soit la source (AD, application, LDAP…), la plateforme ne produit que **9 types d'événements** :
-
-| Type CloudEvent | Abstraction | Équivalent AD | Équivalent Application |
-|---|---|---|---|
-| `iam.identity.created` | Identity créée | Event 4720 | Création compte applicatif |
-| `iam.identity.updated` | Identity modifiée | Event 4738 | Modification profil utilisateur |
-| `iam.identity.enabled` | Identity activée | Event 4722 | Activation compte |
-| `iam.identity.disabled` | Identity désactivée | Event 4725 | Désactivation compte |
-| `iam.identity.deleted` | Identity supprimée | Event 4726 | Suppression compte |
-| `iam.entitlement.created` | Entitlement créé | Event 4727/4731/4754 | Création profil applicatif |
-| `iam.entitlement.updated` | Entitlement modifié | Modif. attributs groupe | Modif. profil applicatif |
-| `iam.entitlement.deleted` | Entitlement supprimé | Event 4730/4734/4758 | Suppression profil |
-| `iam.assignment.added` | Assignment créé | Event 4728/4732/4756 | Affectation User → Profil |
-| `iam.assignment.removed` | Assignment retiré | Event 4729/4733/4757 | Retrait User → Profil |
-
----
-
-## Prérequis de lecture
-
-- Connaissance de base d'Active Directory et des Windows Event Logs
-- Notions de messaging asynchrone (Kafka, Event Hub, etc.)
-- Familiarité avec les patterns event-driven (Event Sourcing, CQRS)
-
----
-
-## Configuration et déploiement de l'agent
-
-### Stratégie de configuration (12-factor)
-
-La configuration de l'agent est répartie en trois couches, par ordre de priorité croissante :
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  3. Variables d'environnement        (PRIORITÉ MAXIMALE)        │
-│     Secrets, URLs de connexion                                  │
-│     Source : Vault / K8s Secret / CI-CD secrets / .env local    │
-├─────────────────────────────────────────────────────────────────┤
-│  2. application-{profil}.yml                                    │
-│     Règles métier du client (resource-mappings, event-ids…)     │
-│     Versionné dans un repo de config séparé par client          │
-├─────────────────────────────────────────────────────────────────┤
-│  1. application.yml                  (PRIORITÉ MINIMALE)        │
-│     Socle produit générique, commité dans ce repo               │
-│     N'évolue que lors d'ajouts de fonctionnalité produit        │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-Ce découplage garantit qu'un changement de configuration client (réorganisation d'OUs AD,
-nouvelle application) ne nécessite **jamais** de relivrer le binaire de l'agent.
-
-### Démarrage développement local
-
-```bash
-# 1. Copier et éditer les variables d'environnement
-cp .env.example .env
-# éditer .env : URLs, mots de passe, source-id...
-
-# 2. Lancer Kafka (Docker)
-docker compose -f agent/docker-compose.dev.yml up kafka
-
-# 3. Lancer l'agent (charge context-resolver-rules.yml via IAP_CONFIG_FILE)
-cd agent
-./mvnw spring-boot:run
-# ou sous Windows PowerShell :
-.\mvnw spring-boot:run
-```
-
-### Fichiers de configuration
-
-| Fichier | Commité | Contenu |
-|---|---|---|
-| `agent/src/main/resources/application.yml` | ✅ oui | Socle produit, valeurs `${VAR:default}` |
-| `agent/src/main/resources/context-resolver-rules.yml` | ❌ gitignored | `resource-mappings` pour dev local |
-| `.env.example` | ✅ oui | Liste documentée de toutes les variables |
-| `.env` | ❌ gitignored | Valeurs réelles pour dev local |
-| `acme-corp.yml` (nom libre) | ✅ (repo config séparé) | Règles métier propres au client |
-
-### Variables d'environnement principales
-
-| Variable | Défaut dans application.yml | Description |
-|---|---|---|
-| `IAP_INSTANCE_ID` | `agent-default` | Identifiant de l'instance |
-| `SPRING_KAFKA_BOOTSTRAP_SERVERS` | `change.me:9092` | Brokers Kafka |
-| `IAP_WEF_SOURCE_ID` | `ad://change.me` | URI de la source AD |
-| `IAP_LDAP_URL` | `ldap://change.me:389` | URL du serveur LDAP / AD |
-| `IAP_LDAP_BASE_DN` | `DC=change,DC=me` | Base DN LDAP |
-| `IAP_LDAP_BIND_DN` | *(vide)* | DN du compte de service |
-| `IAP_LDAP_BIND_PASSWORD` | *(vide)* | Mot de passe du compte de service |
-| `IAP_CONFIG_FILE` | *(vide)* | Chemin vers le fichier de règles métier (`classpath:` ou `file:`) |
-| `SPRING_PROFILES_ACTIVE` | *(vide)* | Profils Spring (généralement vide, config via `IAP_CONFIG_FILE`) |
-
-Voir [.env.example](.env.example) pour la liste complète.
-
-### Déploiement chez un client
-
-```
-repo agent (ce repo)          →  application.yml               (socle produit)
-repo config client-abc        →  acme-corp.yml                 (resource-mappings prod)
-                                  acme-corp-staging.yml         (resource-mappings staging)
-Vault / K8s Secret            →  IAP_LDAP_BIND_PASSWORD
-                                  SPRING_KAFKA_BOOTSTRAP_SERVERS
-                                  IAP_WEF_SOURCE_ID
-                                  IAP_CONFIG_FILE=file:/etc/iap/acme-corp.yml
-```
-
-Activation du fichier client en production :
-```bash
-# Kubernetes (env var dans le deployment)
-env:
-  - name: IAP_CONFIG_FILE
-    value: file:/etc/iap/acme-corp.yml
-  - name: IAP_LDAP_BIND_PASSWORD
-    valueFrom:
-      secretKeyRef:
-        name: iap-secrets
-        key: ldap-bind-password
-```
+Pour plus de détails techniques, voir la documentation dans le dossier `doc/`.
