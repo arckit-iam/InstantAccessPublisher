@@ -36,10 +36,10 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
-        - name: Set repo env for Maven
-          run: |
-            echo "REPO_OWNER=${GITHUB_REPOSITORY_OWNER}" >> $GITHUB_ENV
-            echo "REPO_NAME=$(basename $GITHUB_REPOSITORY)" >> $GITHUB_ENV
+      - name: Set repo env for Maven
+        run: |
+          echo "REPO_OWNER=${GITHUB_REPOSITORY_OWNER}" >> $GITHUB_ENV
+          echo "REPO_NAME=$(basename $GITHUB_REPOSITORY)" >> $GITHUB_ENV
 
       - name: Build and test
         run: mvn -f agent/pom.xml package --batch-mode
