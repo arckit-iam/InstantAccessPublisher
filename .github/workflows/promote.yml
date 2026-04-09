@@ -26,6 +26,12 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
+
+      - name: Export GitHub credentials for Maven
+        run: |
+          echo "GITHUB_ACTOR=${{ github.actor }}" >> $GITHUB_ENV
+          echo "GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
+
       - name: Set repo env for Maven
         run: |
           echo "REPO_OWNER=${GITHUB_REPOSITORY_OWNER}" >> $GITHUB_ENV
