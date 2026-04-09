@@ -45,8 +45,9 @@ jobs:
         if: github.event.action == 'prereleased'
         run: |
 
+
           mvn -f agent/pom.xml dependency:get \
-            -DrepoUrl=https://maven.pkg.github.com/arckit-iam/InstantAccessProvider \
+            -DremoteRepositories=github::default::https://maven.pkg.github.com/arckit-iam/InstantAccessPublisher \
             -Dartifact=com.instantaccessprovider:iap-agent:${{ steps.version.outputs.VERSION }}-dev:jar \
             -Ddest=agent/iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar
 
@@ -73,7 +74,7 @@ jobs:
         run: |
 
           mvn -f agent/pom.xml dependency:get \
-            -DrepoUrl=https://maven.pkg.github.com/arckit-iam/InstantAccessProvider \
+            -DremoteRepositories=github::default::https://maven.pkg.github.com/arckit-iam/InstantAccessPublisher \
             -Dartifact=com.instantaccessprovider:iap-agent:${{ steps.version.outputs.VERSION }}-rc:jar \
             -Ddest=agent/iap-agent-${{ steps.version.outputs.VERSION }}.jar
 
