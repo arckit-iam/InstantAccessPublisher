@@ -7,7 +7,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/iap-agent
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # ⚡ Force Node.js 24
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   promote:
@@ -19,71 +19,80 @@ jobs:
       version: ${{ steps.version.outputs.VERSION }}
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Extract version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v3.5.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.8.0
+
       # ── Prerelease: dev → rc
       - name: Promote jar dev → rc
         if: github.event.action == 'prereleased'
         run: |
-          mvn dependency:get \
+          mvn -f agent/pom.xml dependency:get \
             -DrepoUrl=https://maven.pkg.github.com/${{ github.repository_owner }}/${{ github.repository }} \
             -Dartifact=${{ github.repository_owner }}:${{ github.repository }}:${{ steps.version.outputs.VERSION }}-dev:jar \
-            -Ddest=iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar
-          mvn deploy:deploy-file \
-            -Dfile=iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar \
+            -Ddest=agent/iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar
+
+          mvn -f agent/pom.xml deploy:deploy-file \
+            -Dfile=agent/iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar \
             -DgroupId=${{ github.repository_owner }} \
             -DartifactId=${{ github.repository }} \
             -Dversion=${{ steps.version.outputs.VERSION }}-rc \
             -Dpackaging=jar \
             -DrepositoryId=github \
-            -Durl=https://maven.pkg.github.com/${{ github.repository_owner }}/${{ github.repository }}
+            -Durl=https://maven.pkg.github.com/${{ github.repository_owner }}/${{ github.repository }} \
+            --settings .github/maven-settings.xml
 
       - name: Promote Docker dev → rc
         if: github.event.action == 'prereleased'
         run: |
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-dev
-          docker tag  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-dev \
-                      ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-rc
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-dev \
+                     ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-rc
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-rc
 
       # ── Release: rc → stable
       - name: Promote jar rc → stable
         if: github.event.action == 'released'
         run: |
-          mvn dependency:get \
+          mvn -f agent/pom.xml dependency:get \
             -DrepoUrl=https://maven.pkg.github.com/${{ github.repository_owner }}/${{ github.repository }} \
             -Dartifact=${{ github.repository_owner }}:${{ github.repository }}:${{ steps.version.outputs.VERSION }}-rc:jar \
-            -Ddest=iap-agent-${{ steps.version.outputs.VERSION }}.jar
-          mvn deploy:deploy-file \
-            -Dfile=iap-agent-${{ steps.version.outputs.VERSION }}.jar \
+            -Ddest=agent/iap-agent-${{ steps.version.outputs.VERSION }}.jar
+
+          mvn -f agent/pom.xml deploy:deploy-file \
+            -Dfile=agent/iap-agent-${{ steps.version.outputs.VERSION }}.jar \
             -DgroupId=${{ github.repository_owner }} \
             -DartifactId=${{ github.repository }} \
             -Dversion=${{ steps.version.outputs.VERSION }} \
             -Dpackaging=jar \
             -DrepositoryId=github \
-            -Durl=https://maven.pkg.github.com/${{ github.repository_owner }}/${{ github.repository }}
+            -Durl=https://maven.pkg.github.com/${{ github.repository_owner }}/${{ github.repository }} \
+            --settings .github/maven-settings.xml
 
       - name: Promote Docker rc → stable + latest
         if: github.event.action == 'released'
         run: |
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-rc
-          docker tag  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-rc \
-                      ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}
-          docker tag  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-rc \
-                      ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-rc \
+                     ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-rc \
+                     ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
-  # ── Deploy
   deploy:
     needs: promote
     if: github.event.action == 'released'
