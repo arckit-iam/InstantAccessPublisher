@@ -12,7 +12,7 @@ jobs:
   promote:
     runs-on: ubuntu-latest
     permissions:
-      contents: write    # pour attacher le jar à la Release
+      contents: write    # pour attacher le zip à la Release
       packages: write    # pour re-tagger l'image Docker
     outputs:
       version: ${{ steps.version.outputs.VERSION }}
@@ -36,18 +36,18 @@ jobs:
         with:
           name: iap-agent-${{ steps.version.outputs.VERSION }}-dev
 
-      - name: Promote JAR dev → rc
+      - name: Promote zip dev → rc
         if: github.event.action == 'prereleased'
         run: |
-          mv iap-agent-${{ steps.version.outputs.VERSION }}-dev.jar \
-             iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar
+          mv iap-agent-${{ steps.version.outputs.VERSION }}-dev.zip \
+             iap-agent-${{ steps.version.outputs.VERSION }}-rc.zip
 
       - name: Upload rc artifact
         if: github.event.action == 'prereleased'
         uses: actions/upload-artifact@v4
         with:
           name: iap-agent-${{ steps.version.outputs.VERSION }}-rc
-          path: iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar
+          path: iap-agent-${{ steps.version.outputs.VERSION }}-rc.zip
           retention-days: 90
 
       - name: Promote Docker image dev → rc
@@ -80,25 +80,25 @@ jobs:
         with:
           name: iap-agent-${{ steps.version.outputs.VERSION }}-rc
 
-      - name: Promote JAR rc → stable
+      - name: Promote zip rc → stable
         if: github.event.action == 'released'
         run: |
-          mv iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar \
-             iap-agent-${{ steps.version.outputs.VERSION }}.jar
+          mv iap-agent-${{ steps.version.outputs.VERSION }}-rc.zip \
+             iap-agent-${{ steps.version.outputs.VERSION }}.zip
 
       - name: Upload stable artifact
         if: github.event.action == 'released'
         uses: actions/upload-artifact@v4
         with:
           name: iap-agent-${{ steps.version.outputs.VERSION }}
-          path: iap-agent-${{ steps.version.outputs.VERSION }}.jar
+          path: iap-agent-${{ steps.version.outputs.VERSION }}.zip
           retention-days: 365
 
-      - name: Attach jar to GitHub Release
+      - name: Attach zip to GitHub Release
         if: github.event.action == 'released'
         uses: softprops/action-gh-release@v2
         with:
-          files: iap-agent-${{ steps.version.outputs.VERSION }}.jar
+          files: iap-agent-${{ steps.version.outputs.VERSION }}.zip
 
       - name: Promote Docker image rc → stable + latest
         if: github.event.action == 'released'
