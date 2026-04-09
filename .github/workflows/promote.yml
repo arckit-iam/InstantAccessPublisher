@@ -62,7 +62,7 @@ jobs:
             -Dfile=agent/iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar \
             -DgroupId=com.instantaccesspublisher \
             -DartifactId=iap-agent \
-            -Dversion=${{ steps.version.outputs.VERSION }}-rc \
+            -Drevision=${{ steps.version.outputs.VERSION }}-rc \
             -Dpackaging=jar \
             -DrepositoryId=github \
             -Durl=https://maven.pkg.github.com/arckit-iam/InstantAccessPublisher \
@@ -83,13 +83,15 @@ jobs:
           mvn -f agent/pom.xml dependency:get \
             -DremoteRepositories=github::default::https://maven.pkg.github.com/arckit-iam/InstantAccessPublisher \
             -Dartifact=com.instantaccesspublisher:iap-agent:${{ steps.version.outputs.VERSION }}-rc:jar \
-            -Ddest=agent/iap-agent-${{ steps.version.outputs.VERSION }}.jar
+            -Ddest=agent/iap-agent-${{ steps.version.outputs.VERSION }}.jar \
+            --settings .github/maven-settings.xml
+
 
           mvn -f agent/pom.xml deploy:deploy-file \
             -Dfile=agent/iap-agent-${{ steps.version.outputs.VERSION }}.jar \
             -DgroupId=com.instantaccesspublisher \
             -DartifactId=iap-agent \
-            -Dversion=${{ steps.version.outputs.VERSION }} \
+            -Drevision=${{ steps.version.outputs.VERSION }} \
             -Dpackaging=jar \
             -DrepositoryId=github \
             -Durl=https://maven.pkg.github.com/arckit-iam/InstantAccessPublisher \
