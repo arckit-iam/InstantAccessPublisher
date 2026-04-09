@@ -12,8 +12,8 @@ jobs:
   promote:
     runs-on: ubuntu-latest
     permissions:
-      contents: write    # pour attacher le jar à la Release
-      packages: write    # pour retagger l'image Docker
+      contents: read     # on lit les packages / artifacts
+      packages: write    # pour retagger Docker et jar
     outputs:
       version: ${{ steps.version.outputs.VERSION }}
 
@@ -29,29 +29,28 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # ── Pre-release : dev → rc ──────────────────────────────────────────────
-      - name: Download dev jar from prerelease
-        if: github.event.action == 'prereleased'
-        uses: dsaltares/fetch-gh-release-asset@v1
-        with:
-          repo: ${{ github.repository }}
-          version: tags/v${{ steps.version.outputs.VERSION }}
-          file: iap-agent-${{ steps.version.outputs.VERSION }}-dev.jar
-
+      # ── Pre-release : promote dev → rc ──────────────────────────────
       - name: Promote jar dev → rc
         if: github.event.action == 'prereleased'
-        run: mv iap-agent-${{ steps.version.outputs.VERSION }}-dev.jar \
-               iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar
+        run: |
+          echo "Promoting jar dev → rc"
+          # Télécharger le jar dev depuis GitHub Packages (Maven)
+          mvn dependency:get \
+            -DrepoUrl=https://maven.pkg.github.com/${{ github.repository_owner }}/${{ github.repository }} \
+            -Dartifact=${{ github.repository_owner }}:${{ github.repository }}:${{ steps.version.outputs.VERSION }}-dev:jar \
+            -Ddest=iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar
+          
+          # Optionnel: upload jar rc dans GitHub Packages
+          mvn deploy:deploy-file \
+            -Dfile=iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar \
+            -DgroupId=${{ github.repository_owner }} \
+            -DartifactId=${{ github.repository }} \
+            -Dversion=${{ steps.version.outputs.VERSION }}-rc \
+            -Dpackaging=jar \
+            -DrepositoryId=github \
+            -Durl=https://maven.pkg.github.com/${{ github.repository_owner }}/${{ github.repository }}
 
-      - name: Upload rc jar to prerelease
-        if: github.event.action == 'prereleased'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.version.outputs.VERSION }}
-          files: iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar
-          prerelease: true
-
-      - name: Promote Docker image dev → rc
+      - name: Promote Docker dev → rc
         if: github.event.action == 'prereleased'
         run: |
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-dev
@@ -59,29 +58,28 @@ jobs:
                       ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-rc
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-rc
 
-      # ── Release : rc → stable ───────────────────────────────────────────────
-      - name: Download rc jar from prerelease
-        if: github.event.action == 'released'
-        uses: dsaltares/fetch-gh-release-asset@v1
-        with:
-          repo: ${{ github.repository }}
-          version: tags/v${{ steps.version.outputs.VERSION }}
-          file: iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar
-
+      # ── Release : promote rc → stable ───────────────────────────────
       - name: Promote jar rc → stable
         if: github.event.action == 'released'
-        run: mv iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar \
-               iap-agent-${{ steps.version.outputs.VERSION }}.jar
+        run: |
+          echo "Promoting jar rc → stable"
+          # Télécharger le jar rc depuis GitHub Packages
+          mvn dependency:get \
+            -DrepoUrl=https://maven.pkg.github.com/${{ github.repository_owner }}/${{ github.repository }} \
+            -Dartifact=${{ github.repository_owner }}:${{ github.repository }}:${{ steps.version.outputs.VERSION }}-rc:jar \
+            -Ddest=iap-agent-${{ steps.version.outputs.VERSION }}.jar
 
-      - name: Upload stable jar to release
-        if: github.event.action == 'released'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.version.outputs.VERSION }}
-          files: iap-agent-${{ steps.version.outputs.VERSION }}.jar
-          prerelease: false
+          # Upload jar stable dans GitHub Packages
+          mvn deploy:deploy-file \
+            -Dfile=iap-agent-${{ steps.version.outputs.VERSION }}.jar \
+            -DgroupId=${{ github.repository_owner }} \
+            -DartifactId=${{ github.repository }} \
+            -Dversion=${{ steps.version.outputs.VERSION }} \
+            -Dpackaging=jar \
+            -DrepositoryId=github \
+            -Durl=https://maven.pkg.github.com/${{ github.repository_owner }}/${{ github.repository }}
 
-      - name: Promote Docker image rc → stable + latest
+      - name: Promote Docker rc → stable + latest
         if: github.event.action == 'released'
         run: |
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-rc
@@ -92,7 +90,7 @@ jobs:
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
-  # ── Deploy (release uniquement) ─────────────────────────────────────────────
+  # ── Deploy ─────────────────────────────────────────────
   deploy:
     needs: promote
     if: github.event.action == 'released'
