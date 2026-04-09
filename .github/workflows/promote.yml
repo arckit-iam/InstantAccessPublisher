@@ -12,8 +12,8 @@ jobs:
   promote:
     runs-on: ubuntu-latest
     permissions:
-      contents: write    # pour attacher le zip à la Release
-      packages: write    # pour re-tagger l'image Docker
+      contents: write    # pour attacher le jar à la Release
+      packages: write    # pour retagger l'image Docker
     outputs:
       version: ${{ steps.version.outputs.VERSION }}
 
@@ -30,25 +30,26 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # ── Pre-release : dev → rc ──────────────────────────────────────────────
-      - name: Download dev artifact
+      - name: Download dev jar from prerelease
         if: github.event.action == 'prereleased'
-        uses: actions/download-artifact@v4
+        uses: dsaltares/fetch-gh-release-asset@v1
         with:
-          name: iap-agent-${{ steps.version.outputs.VERSION }}-dev
+          repo: ${{ github.repository }}
+          version: tags/v${{ steps.version.outputs.VERSION }}
+          file: iap-agent-${{ steps.version.outputs.VERSION }}-dev.jar
 
-      - name: Promote zip dev → rc
+      - name: Promote jar dev → rc
         if: github.event.action == 'prereleased'
-        run: |
-          mv iap-agent-${{ steps.version.outputs.VERSION }}-dev.zip \
-             iap-agent-${{ steps.version.outputs.VERSION }}-rc.zip
+        run: mv iap-agent-${{ steps.version.outputs.VERSION }}-dev.jar \
+               iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar
 
-      - name: Upload rc artifact
+      - name: Upload rc jar to prerelease
         if: github.event.action == 'prereleased'
-        uses: actions/upload-artifact@v4
+        uses: softprops/action-gh-release@v2
         with:
-          name: iap-agent-${{ steps.version.outputs.VERSION }}-rc
-          path: iap-agent-${{ steps.version.outputs.VERSION }}-rc.zip
-          retention-days: 90
+          tag_name: v${{ steps.version.outputs.VERSION }}
+          files: iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar
+          prerelease: true
 
       - name: Promote Docker image dev → rc
         if: github.event.action == 'prereleased'
@@ -58,47 +59,27 @@ jobs:
                       ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-rc
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-rc
 
-      - name: Download config dev artifact
-        if: github.event.action == 'prereleased'
-        uses: actions/download-artifact@v4
-        with:
-          name: iap-config-${{ steps.version.outputs.VERSION }}-dev
-          path: iap-config-dev/
-
-      - name: Upload config rc artifact
-        if: github.event.action == 'prereleased'
-        uses: actions/upload-artifact@v4
-        with:
-          name: iap-config-${{ steps.version.outputs.VERSION }}-rc
-          path: iap-config-dev/
-          retention-days: 90
-
       # ── Release : rc → stable ───────────────────────────────────────────────
-      - name: Download rc artifact
+      - name: Download rc jar from prerelease
         if: github.event.action == 'released'
-        uses: actions/download-artifact@v4
+        uses: dsaltares/fetch-gh-release-asset@v1
         with:
-          name: iap-agent-${{ steps.version.outputs.VERSION }}-rc
+          repo: ${{ github.repository }}
+          version: tags/v${{ steps.version.outputs.VERSION }}
+          file: iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar
 
-      - name: Promote zip rc → stable
+      - name: Promote jar rc → stable
         if: github.event.action == 'released'
-        run: |
-          mv iap-agent-${{ steps.version.outputs.VERSION }}-rc.zip \
-             iap-agent-${{ steps.version.outputs.VERSION }}.zip
+        run: mv iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar \
+               iap-agent-${{ steps.version.outputs.VERSION }}.jar
 
-      - name: Upload stable artifact
-        if: github.event.action == 'released'
-        uses: actions/upload-artifact@v4
-        with:
-          name: iap-agent-${{ steps.version.outputs.VERSION }}
-          path: iap-agent-${{ steps.version.outputs.VERSION }}.zip
-          retention-days: 365
-
-      - name: Attach zip to GitHub Release
+      - name: Upload stable jar to release
         if: github.event.action == 'released'
         uses: softprops/action-gh-release@v2
         with:
-          files: iap-agent-${{ steps.version.outputs.VERSION }}.zip
+          tag_name: v${{ steps.version.outputs.VERSION }}
+          files: iap-agent-${{ steps.version.outputs.VERSION }}.jar
+          prerelease: false
 
       - name: Promote Docker image rc → stable + latest
         if: github.event.action == 'released'
@@ -110,21 +91,6 @@ jobs:
                       ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-
-      - name: Download config rc artifact
-        if: github.event.action == 'released'
-        uses: actions/download-artifact@v4
-        with:
-          name: iap-config-${{ steps.version.outputs.VERSION }}-rc
-          path: iap-config-rc/
-
-      - name: Upload config stable artifact
-        if: github.event.action == 'released'
-        uses: actions/upload-artifact@v4
-        with:
-          name: iap-config-${{ steps.version.outputs.VERSION }}
-          path: iap-config-rc/
-          retention-days: 365
 
   # ── Deploy (release uniquement) ─────────────────────────────────────────────
   deploy:
