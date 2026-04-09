@@ -13,7 +13,7 @@
 
     <groupId>com.instantaccessprovider</groupId>
     <artifactId>iap-agent</artifactId>
-    <version>0.1.7s</version>
+    <version>0.1.8</version>
     <name>InstantAccessProvider Agent</name>
     <description>IAM event collection agent — WEF, Syslog, Webhook, DirSync → Kafka</description>
 
