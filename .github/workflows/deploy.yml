@@ -34,16 +34,34 @@ jobs:
     runs-on: [self-hosted, "${{ inputs.runner_label }}"]
     environment: prod
     steps:
-      - name: Download stable artifact
-        uses: actions/download-artifact@v4
+      - name: Set up Maven
+        uses: actions/setup-java@v4
         with:
-          name: iap-agent-${{ inputs.version }}
+          distribution: 'temurin'
+          java-version: '21'
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Download stable config artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: iap-config-${{ inputs.version }}
-          path: iap-config/
+      - name: Download agent jar and pom from GitHub Packages
+        run: |
+          mvn org.apache.maven.plugins:maven-dependency-plugin:3.6.0:get \
+            -DremoteRepositories=https://maven.pkg.github.com/${{ github.repository_owner }}/InstantAccessProvider \
+            -Dartifact=com.instantaccessprovider:agent:${{ inputs.version }}:jar \
+            -Ddest=iap-agent-${{ inputs.version }}.jar
+          mvn org.apache.maven.plugins:maven-dependency-plugin:3.6.0:get \
+            -DremoteRepositories=https://maven.pkg.github.com/${{ github.repository_owner }}/InstantAccessProvider \
+            -Dartifact=com.instantaccessprovider:agent:${{ inputs.version }}:pom \
+            -Ddest=iap-agent-${{ inputs.version }}.pom
+
+      - name: Download config zip from GitHub Packages
+        run: |
+          mvn org.apache.maven.plugins:maven-dependency-plugin:3.6.0:get \
+            -DremoteRepositories=https://maven.pkg.github.com/${{ github.repository_owner }}/InstantAccessProvider \
+            -Dartifact=com.instantaccessprovider:iap-config:${{ inputs.version }}:zip \
+            -Ddest=iap-config.zip
+          mkdir -p iap-config
+          unzip -o iap-config.zip -d iap-config
 
       - name: Deploy and configure agent
         shell: powershell

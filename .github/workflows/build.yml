@@ -55,6 +55,14 @@ jobs:
             -Drevision=${{ steps.version.outputs.VERSION }} \
             --settings .github/maven-settings.xml
 
+      - name: Build config zip
+        run: |
+          mvn -f config/pom.xml package -Drevision=${{ steps.version.outputs.VERSION }}
+
+      - name: Publish config zip
+        run: |
+          mvn -f config/pom.xml deploy -DskipTests -Drevision=${{ steps.version.outputs.VERSION }} --settings .github/maven-settings.xml
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3.5.0
         with:
