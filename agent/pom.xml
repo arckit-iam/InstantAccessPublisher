@@ -11,7 +11,7 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.instantaccessprovider</groupId>
+    <groupId>com.instantaccesspublisher</groupId>
     <artifactId>iap-agent</artifactId>
     <version>${revision}</version>
     <name>InstantAccessProvider Agent</name>

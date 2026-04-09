@@ -52,8 +52,6 @@ if (git tag --list $tagName) {
 }
 
 # Commit + tag
-$commitMsg = "chore: bump version to $newVersion"
-git commit -m $commitMsg
 git tag $tagName
 
 git push
