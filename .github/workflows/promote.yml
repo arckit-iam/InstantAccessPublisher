@@ -54,17 +54,17 @@ jobs:
 
           mvn -f agent/pom.xml dependency:get \
             -DremoteRepositories=github::default::https://maven.pkg.github.com/arckit-iam/InstantAccessPublisher \
-            -Dartifact=com.instantaccessprovider:iap-agent:${{ steps.version.outputs.VERSION }}-dev:jar \
+            -Dartifact=com.instantaccesspublisher:iap-agent:${{ steps.version.outputs.VERSION }}-dev:jar \
             -Ddest=agent/iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar
 
           mvn -f agent/pom.xml deploy:deploy-file \
             -Dfile=agent/iap-agent-${{ steps.version.outputs.VERSION }}-rc.jar \
-            -DgroupId=com.instantaccessprovider \
+            -DgroupId=com.instantaccesspublisher \
             -DartifactId=iap-agent \
             -Dversion=${{ steps.version.outputs.VERSION }}-rc \
             -Dpackaging=jar \
             -DrepositoryId=github \
-            -Durl=https://maven.pkg.github.com/arckit-iam/InstantAccessProvider \
+            -Durl=https://maven.pkg.github.com/arckit-iam/InstantAccessPublisher \
             --settings .github/maven-settings.xml
 
       - name: Promote Docker dev → rc
@@ -81,17 +81,17 @@ jobs:
 
           mvn -f agent/pom.xml dependency:get \
             -DremoteRepositories=github::default::https://maven.pkg.github.com/arckit-iam/InstantAccessPublisher \
-            -Dartifact=com.instantaccessprovider:iap-agent:${{ steps.version.outputs.VERSION }}-rc:jar \
+            -Dartifact=com.instantaccesspublisher:iap-agent:${{ steps.version.outputs.VERSION }}-rc:jar \
             -Ddest=agent/iap-agent-${{ steps.version.outputs.VERSION }}.jar
 
           mvn -f agent/pom.xml deploy:deploy-file \
             -Dfile=agent/iap-agent-${{ steps.version.outputs.VERSION }}.jar \
-            -DgroupId=com.instantaccessprovider \
+            -DgroupId=com.instantaccesspublisher \
             -DartifactId=iap-agent \
             -Dversion=${{ steps.version.outputs.VERSION }} \
             -Dpackaging=jar \
             -DrepositoryId=github \
-            -Durl=https://maven.pkg.github.com/arckit-iam/InstantAccessProvider \
+            -Durl=https://maven.pkg.github.com/arckit-iam/InstantAccessPublisher \
             --settings .github/maven-settings.xml
 
       - name: Promote Docker rc → stable + latest
