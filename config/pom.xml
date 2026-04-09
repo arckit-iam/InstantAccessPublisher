@@ -5,7 +5,7 @@
     <groupId>com.instantaccessprovider</groupId>
     <artifactId>iap-config</artifactId>
     <version>${revision}</version>
-    <packaging>zip</packaging>
+    <packaging>jar</packaging>
     <name>IAP Config</name>
     <build>
         <plugins>
@@ -13,9 +13,9 @@
                 <artifactId>maven-assembly-plugin</artifactId>
                 <version>3.6.0</version>
                 <configuration>
-                    <descriptorRefs>
-                        <descriptorRef>artifact</descriptorRef>
-                    </descriptorRefs>
+                    <descriptors>
+                        <descriptor>src/assembly/zip.xml</descriptor>
+                    </descriptors>
                     <finalName>iap-config-${revision}</finalName>
                     <appendAssemblyId>false</appendAssemblyId>
                 </configuration>
