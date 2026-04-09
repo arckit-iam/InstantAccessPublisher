@@ -13,7 +13,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       packages: write
 
     steps:
@@ -43,7 +43,8 @@ jobs:
       # ── Publish dev jar to GitHub Packages ─────────────────────────
       - name: Publish dev jar to GitHub Packages
         run: |
-          mvn deploy -DskipTests -Drevision=${{ steps.version.outputs.VERSION }}-dev \
+          mvn deploy -DskipTests \
+            -Drevision=${{ steps.version.outputs.VERSION }}-dev \
             --settings .github/maven-settings.xml
 
       # ── Docker dev ───────────────────────────────────────────────
