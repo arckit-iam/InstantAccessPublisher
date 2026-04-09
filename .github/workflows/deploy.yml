@@ -1,6 +1,18 @@
+
 name: Deploy
 
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version à déployer"
+        required: true
+        type: string
+      runner_label:
+        description: "Label du self-hosted runner cible (ex: wec01, wec-client-x)"
+        required: false
+        type: string
+        default: wec
   workflow_call:
     inputs:
       version:
