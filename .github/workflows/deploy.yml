@@ -1,4 +1,3 @@
-
 name: Deploy
 
 on:
@@ -35,7 +34,8 @@ jobs:
     runs-on: [self-hosted, "${{ inputs.runner_label }}"]
     environment: prod
 
-    steps:
+
+
       - name: Download stable artifact
         uses: actions/download-artifact@v4
         with:

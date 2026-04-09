@@ -47,12 +47,12 @@ jobs:
       - name: Rename artifact (dev suffix)
         run: |
           mv agent/target/iap-agent-*.jar \
-             agent/target/iap-agent-${{ steps.version.outputs.VERSION }}-dev.jar
+             agent/target/iap-agent-${{ steps.version.outputs.VERSION }}.jar
 
       - name: Publish dev jar
         run: |
           mvn -f agent/pom.xml deploy -DskipTests \
-            -Drevision=${{ steps.version.outputs.VERSION }}-dev \
+            -Drevision=${{ steps.version.outputs.VERSION }} \
             --settings .github/maven-settings.xml
 
       - name: Log in to GitHub Container Registry
@@ -70,6 +70,6 @@ jobs:
         with:
           context: agent
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}-dev
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
