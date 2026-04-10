@@ -77,7 +77,7 @@ jobs:
             -f .github/workflows/minimal-pom.xml
           if (-not (Test-Path iap-config)) { New-Item -ItemType Directory -Path iap-config | Out-Null }
           & tar -xf iap-config.zip -C iap-config
-
+          
       - name: Deploy and configure agent
         shell: powershell
         env:
