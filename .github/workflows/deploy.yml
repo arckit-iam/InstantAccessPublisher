@@ -49,7 +49,7 @@ jobs:
             Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
           }
           if (-not (Get-Command mvn -ErrorAction SilentlyContinue)) {
-            scoop install maven
+            & "$HOME\scoop\shims\scoop.ps1" install maven
           }
           $mavenBin = "$HOME\scoop\apps\maven\current\bin"
           $env:PATH = "$mavenBin;" + $env:PATH
