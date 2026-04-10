@@ -51,6 +51,9 @@ jobs:
           if (-not (Get-Command mvn -ErrorAction SilentlyContinue)) {
             scoop install maven
           }
+          $mavenBin = "$HOME\scoop\apps\maven\current\bin"
+          $env:PATH = "$mavenBin;" + $env:PATH
+          [System.Environment]::SetEnvironmentVariable('PATH', "$mavenBin;" + [System.Environment]::GetEnvironmentVariable('PATH','Process'), 'Process')
           mvn -version
 
       - name: Download agent jar from GitHub Packages
