@@ -60,13 +60,13 @@ jobs:
         shell: powershell
         run: |
           $pom = @'
-<project>
-  <modelVersion>4.0.0</modelVersion>
-  <groupId>dummy</groupId>
-  <artifactId>dummy</artifactId>
-  <version>1.0.0</version>
-</project>
-'@
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>dummy</groupId>
+                  <artifactId>dummy</artifactId>
+                  <version>1.0.0</version>
+                </project>
+                '@
           $pomPath = "minimal-pom.xml"
           $pom | Set-Content $pomPath
           & "$HOME\scoop\apps\maven\current\bin\mvn.cmd" org.apache.maven.plugins:maven-dependency-plugin:3.6.0:get `
@@ -81,13 +81,13 @@ jobs:
         shell: powershell
         run: |
           $pom = @'
-<project>
-  <modelVersion>4.0.0</modelVersion>
-  <groupId>dummy</groupId>
-  <artifactId>dummy</artifactId>
-  <version>1.0.0</version>
-</project>
-'@
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>dummy</groupId>
+                  <artifactId>dummy</artifactId>
+                  <version>1.0.0</version>
+                </project>
+                '@
           $pomPath = "minimal-pom.xml"
           $pom | Set-Content $pomPath
           & "$HOME\scoop\apps\maven\current\bin\mvn.cmd" org.apache.maven.plugins:maven-dependency-plugin:3.6.0:get `
