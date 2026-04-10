@@ -61,7 +61,7 @@ jobs:
         run: |
           & "$HOME\scoop\apps\maven\current\bin\mvn.cmd" org.apache.maven.plugins:maven-dependency-plugin:3.6.0:get `
             -DremoteRepositories=https://maven.pkg.github.com/${{ github.repository_owner }}/InstantAccessPublisher `
-            -Dartifact=com.instantaccessprovider:agent:${{ inputs.version }}:jar `
+            -Dartifact=com.instantaccesspublisher:agent:${{ inputs.version }}:jar `
             -Ddest=iap-agent-${{ inputs.version }}.jar `
             -Dtransitive=false
 
@@ -70,7 +70,7 @@ jobs:
         run: |
           & "$HOME\scoop\apps\maven\current\bin\mvn.cmd" org.apache.maven.plugins:maven-dependency-plugin:3.6.0:get `
             -DremoteRepositories=https://maven.pkg.github.com/${{ github.repository_owner }}/InstantAccessPublisher `
-            -Dartifact=com.instantaccessprovider:iap-config:${{ inputs.version }}:zip `
+            -Dartifact=com.instantaccesspublisher:iap-config:${{ inputs.version }}:zip `
             -Ddest=iap-config.zip `
             -Dtransitive=false
           if (-not (Test-Path iap-config)) { New-Item -ItemType Directory -Path iap-config | Out-Null }
