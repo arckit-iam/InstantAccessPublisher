@@ -64,6 +64,23 @@ jobs:
             -Dartifact=com.instantaccesspublisher:agent:${{ inputs.version }}:jar `
             -Ddest=iap-agent-${{ inputs.version }}.jar `
             -Dtransitive=false
+            $pom = @'
+  <project>
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>dummy</groupId>
+    <artifactId>dummy</artifactId>
+    <version>1.0.0</version>
+  </project>
+  '@
+            $tmp = "$(New-TemporaryFile).xml"
+            $pom | Set-Content $tmp
+            & "$HOME\scoop\apps\maven\current\bin\mvn.cmd" org.apache.maven.plugins:maven-dependency-plugin:3.6.0:get `
+              -DremoteRepositories=https://maven.pkg.github.com/${{ github.repository_owner }}/InstantAccessPublisher `
+              -Dartifact=com.instantaccesspublisher:agent:${{ inputs.version }}:jar `
+              -Ddest=iap-agent-${{ inputs.version }}.jar `
+              -Dtransitive=false `
+              -f $tmp
+            Remove-Item $tmp
 
       - name: Download config zip from GitHub Packages
         shell: powershell
@@ -75,6 +92,23 @@ jobs:
             -Dtransitive=false
           if (-not (Test-Path iap-config)) { New-Item -ItemType Directory -Path iap-config | Out-Null }
           & tar -xf iap-config.zip -C iap-config
+            $pom = @'
+  <project>
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>dummy</groupId>
+    <artifactId>dummy</artifactId>
+    <version>1.0.0</version>
+  </project>
+  '@
+            $tmp = "$(New-TemporaryFile).xml"
+            $pom | Set-Content $tmp
+            & "$HOME\scoop\apps\maven\current\bin\mvn.cmd" org.apache.maven.plugins:maven-dependency-plugin:3.6.0:get `
+              -DremoteRepositories=https://maven.pkg.github.com/${{ github.repository_owner }}/InstantAccessPublisher `
+              -Dartifact=com.instantaccesspublisher:iap-config:${{ inputs.version }}:zip `
+              -Ddest=iap-config.zip `
+              -Dtransitive=false `
+              -f $tmp
+            Remove-Item $tmp
 
       - name: Deploy and configure agent
         shell: powershell
