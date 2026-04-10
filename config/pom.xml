@@ -7,6 +7,13 @@
     <version>${revision}</version>
     <packaging>jar</packaging>
     <name>IAP Config</name>
+    <distributionManagement>
+        <repository>
+            <id>github</id>
+            <name>GitHub Packages</name>
+            <url>https://maven.pkg.github.com/${env.REPO_OWNER}/${env.REPO_NAME}</url>
+        </repository>
+    </distributionManagement>
     <build>
         <plugins>
             <plugin>
