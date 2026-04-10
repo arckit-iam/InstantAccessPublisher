@@ -59,8 +59,7 @@ jobs:
       - name: Download agent jar from GitHub Packages
         shell: powershell
         run: |
-          $mvn = "$HOME\scoop\apps\maven\current\bin\mvn.cmd"
-          & $mvn org.apache.maven.plugins:maven-dependency-plugin:3.6.0:get `
+          & "$HOME\scoop\apps\maven\current\bin\mvn.cmd" org.apache.maven.plugins:maven-dependency-plugin:3.6.0:get `
             -DremoteRepositories=https://maven.pkg.github.com/${{ github.repository_owner }}/InstantAccessProvider `
             -Dartifact=com.instantaccessprovider:agent:${{ inputs.version }}:jar `
             -Ddest=iap-agent-${{ inputs.version }}.jar `
@@ -69,8 +68,7 @@ jobs:
       - name: Download config zip from GitHub Packages
         shell: powershell
         run: |
-          $mvn = "$HOME\scoop\apps\maven\current\bin\mvn.cmd"
-          & $mvn org.apache.maven.plugins:maven-dependency-plugin:3.6.0:get `
+          & "$HOME\scoop\apps\maven\current\bin\mvn.cmd" org.apache.maven.plugins:maven-dependency-plugin:3.6.0:get `
             -DremoteRepositories=https://maven.pkg.github.com/${{ github.repository_owner }}/InstantAccessProvider `
             -Dartifact=com.instantaccessprovider:iap-config:${{ inputs.version }}:zip `
             -Ddest=iap-config.zip `
