@@ -59,22 +59,44 @@ jobs:
       - name: Download agent jar from GitHub Packages
         shell: powershell
         run: |
+          $pom = @'
+<project>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>dummy</groupId>
+  <artifactId>dummy</artifactId>
+  <version>1.0.0</version>
+</project>
+'@
+          $pomPath = "minimal-pom.xml"
+          $pom | Set-Content $pomPath
           & "$HOME\scoop\apps\maven\current\bin\mvn.cmd" org.apache.maven.plugins:maven-dependency-plugin:3.6.0:get `
             -DremoteRepositories=https://maven.pkg.github.com/${{ github.repository_owner }}/InstantAccessPublisher `
             -Dartifact=com.instantaccesspublisher:agent:${{ inputs.version }}:jar `
             -Ddest=iap-agent-${{ inputs.version }}.jar `
             -Dtransitive=false `
-            -f .github/workflows/minimal-pom.xml
+            -f $pomPath
+          Remove-Item $pomPath -Force
 
       - name: Download config zip from GitHub Packages
         shell: powershell
         run: |
+          $pom = @'
+<project>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>dummy</groupId>
+  <artifactId>dummy</artifactId>
+  <version>1.0.0</version>
+</project>
+'@
+          $pomPath = "minimal-pom.xml"
+          $pom | Set-Content $pomPath
           & "$HOME\scoop\apps\maven\current\bin\mvn.cmd" org.apache.maven.plugins:maven-dependency-plugin:3.6.0:get `
             -DremoteRepositories=https://maven.pkg.github.com/${{ github.repository_owner }}/InstantAccessPublisher `
             -Dartifact=com.instantaccesspublisher:iap-config:${{ inputs.version }}:zip `
             -Ddest=iap-config.zip `
             -Dtransitive=false `
-            -f .github/workflows/minimal-pom.xml
+            -f $pomPath
+          Remove-Item $pomPath -Force
           if (-not (Test-Path iap-config)) { New-Item -ItemType Directory -Path iap-config | Out-Null }
           & tar -xf iap-config.zip -C iap-config
           
