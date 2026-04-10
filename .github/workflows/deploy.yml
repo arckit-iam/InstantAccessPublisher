@@ -41,9 +41,6 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
           cache: maven
-          server-id: github
-          server-username: GITHUB_ACTOR
-          server-password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download agent jar from GitHub Packages
         run: |
