@@ -35,11 +35,15 @@ jobs:
     environment: prod
 
     steps:
-      - name: Set up Maven
+      - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '21'
+
+      - name: Set up Maven
+        uses: s4u/setup-maven-action@v1
+        with:
           maven-version: '3.9.6'
 
       - name: Download agent jar from GitHub Packages
