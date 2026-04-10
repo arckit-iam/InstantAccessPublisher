@@ -60,7 +60,7 @@ jobs:
         shell: powershell
         run: |
           & "$HOME\scoop\apps\maven\current\bin\mvn.cmd" org.apache.maven.plugins:maven-dependency-plugin:3.6.0:get `
-            -DremoteRepositories=https://maven.pkg.github.com/${{ github.repository_owner }}/InstantAccessProvider `
+            -DremoteRepositories=https://maven.pkg.github.com/${{ github.repository_owner }}/InstantAccessPublisher `
             -Dartifact=com.instantaccessprovider:agent:${{ inputs.version }}:jar `
             -Ddest=iap-agent-${{ inputs.version }}.jar `
             -Dtransitive=false
@@ -69,7 +69,7 @@ jobs:
         shell: powershell
         run: |
           & "$HOME\scoop\apps\maven\current\bin\mvn.cmd" org.apache.maven.plugins:maven-dependency-plugin:3.6.0:get `
-            -DremoteRepositories=https://maven.pkg.github.com/${{ github.repository_owner }}/InstantAccessProvider `
+            -DremoteRepositories=https://maven.pkg.github.com/${{ github.repository_owner }}/InstantAccessPublisher `
             -Dartifact=com.instantaccessprovider:iap-config:${{ inputs.version }}:zip `
             -Ddest=iap-config.zip `
             -Dtransitive=false
