@@ -33,12 +33,14 @@ jobs:
     # Le runner tourne directement sur WEC01 (ZeroTier) — pas de SSH/SCP nécessaire
     runs-on: [self-hosted, "${{ inputs.runner_label }}"]
     environment: prod
+
     steps:
       - name: Set up Maven
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '21'
+          cache: maven
           server-id: github
           server-username: GITHUB_ACTOR
           server-password: ${{ secrets.GITHUB_TOKEN }}
