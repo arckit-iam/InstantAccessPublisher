@@ -45,23 +45,21 @@ jobs:
           server-username: GITHUB_ACTOR
           server-password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Download agent jar and pom from GitHub Packages
+      - name: Download agent jar from GitHub Packages
         run: |
           mvn org.apache.maven.plugins:maven-dependency-plugin:3.6.0:get \
             -DremoteRepositories=https://maven.pkg.github.com/${{ github.repository_owner }}/InstantAccessProvider \
             -Dartifact=com.instantaccessprovider:agent:${{ inputs.version }}:jar \
-            -Ddest=iap-agent-${{ inputs.version }}.jar
-          mvn org.apache.maven.plugins:maven-dependency-plugin:3.6.0:get \
-            -DremoteRepositories=https://maven.pkg.github.com/${{ github.repository_owner }}/InstantAccessProvider \
-            -Dartifact=com.instantaccessprovider:agent:${{ inputs.version }}:pom \
-            -Ddest=iap-agent-${{ inputs.version }}.pom
+            -Ddest=iap-agent-${{ inputs.version }}.jar \
+            -Dtransitive=false
 
       - name: Download config zip from GitHub Packages
         run: |
           mvn org.apache.maven.plugins:maven-dependency-plugin:3.6.0:get \
             -DremoteRepositories=https://maven.pkg.github.com/${{ github.repository_owner }}/InstantAccessProvider \
             -Dartifact=com.instantaccessprovider:iap-config:${{ inputs.version }}:zip \
-            -Ddest=iap-config.zip
+            -Ddest=iap-config.zip \
+            -Dtransitive=false
           mkdir -p iap-config
           unzip -o iap-config.zip -d iap-config
 
