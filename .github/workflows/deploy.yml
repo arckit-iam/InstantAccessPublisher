@@ -40,7 +40,7 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
-          cache: maven
+          maven-version: '3.9.6'
 
       - name: Download agent jar from GitHub Packages
         run: |
