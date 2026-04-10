@@ -63,7 +63,8 @@ jobs:
             -DremoteRepositories=https://maven.pkg.github.com/${{ github.repository_owner }}/InstantAccessPublisher `
             -Dartifact=com.instantaccesspublisher:agent:${{ inputs.version }}:jar `
             -Ddest=iap-agent-${{ inputs.version }}.jar `
-            -Dtransitive=false
+            -Dtransitive=false `
+            -f .github/workflows/minimal-pom.xml
 
       - name: Download config zip from GitHub Packages
         shell: powershell
@@ -72,7 +73,8 @@ jobs:
             -DremoteRepositories=https://maven.pkg.github.com/${{ github.repository_owner }}/InstantAccessPublisher `
             -Dartifact=com.instantaccesspublisher:iap-config:${{ inputs.version }}:zip `
             -Ddest=iap-config.zip `
-            -Dtransitive=false
+            -Dtransitive=false `
+            -f .github/workflows/minimal-pom.xml
           if (-not (Test-Path iap-config)) { New-Item -ItemType Directory -Path iap-config | Out-Null }
           & tar -xf iap-config.zip -C iap-config
 
