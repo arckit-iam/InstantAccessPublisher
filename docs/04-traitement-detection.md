@@ -1,6 +1,6 @@
 # 04 — Traitement et Détection des Événements
 
-> Le pipeline de traitement est **source-agnostique**. Il reçoit des événements bruts de tous les adapters (AD, applications, LDAP…) et produit des CloudEvents normalisés sur le modèle `Identity / Entitlement / Assignment`. Voir `docs/00-modele-abstrait.md`.
+> Le pipeline de traitement est **source-agnostique**. Il reçoit des événements bruts depuis Kafka (collectés par Fluent Bit) et produit des CloudEvents normalisés sur le modèle `Identity / Entitlement / Assignment`. Voir `docs/00-modele-abstrait.md`.
 
 ## 1. Pipeline de traitement
 
@@ -28,7 +28,7 @@ iam.raw.{source}  ← un topic par source (AD, app-a, ldap…)
                          ▼
 ┌─────────────────────────────────────────────────────┐
 │  ÉTAPE 3 — Enrichissement                           │
-│  - Lookup LDAP / API source : département, manager  │
+│  - Lookup LDAP / API source : département, manager, UO │
 │  - Lookup CMDB : sensibilité de l'Entitlement        │
 │  - Résoudre ID natif → ID plateforme (UUID)          │
 │  - Résoudre Entitlements imbriqués (récursif)        │
@@ -44,7 +44,7 @@ iam.raw.{source}  ← un topic par source (AD, app-a, ldap…)
          │               │                  │
          ▼               ▼                  ▼
   iam.identity    iam.entitlement     iam.assignment
-  + iam.alert
+  + iam.alert     + iam.consolidated
 ```
 
 ---
@@ -76,7 +76,12 @@ Tous les événements publiés respectent **CloudEvents 1.0** avec le modèle ab
       "metadata": {
         "samAccountName": "john.doe",
         "upn": "john.doe@corp.example.com",
-        "department": "IT"
+        "department": "IT",
+        "organizationalUnits": [
+          "OU=Users,OU=Paris,DC=corp,DC=example,DC=com",
+          "OU=Paris,DC=corp,DC=example,DC=com"
+        ],
+        "primaryOu": "OU=Users,OU=Paris,DC=corp,DC=example,DC=com"
       }
     },
     "actor": {
@@ -111,6 +116,20 @@ Tous les événements publiés respectent **CloudEvents 1.0** avec le modèle ab
 
 > Voir le schéma complet (AD et Application A) dans `docs/00-modele-abstrait.md` section 6.
 
+### 2.4 Positionnement SCIM
+
+Le format principal reste **CloudEvents + schéma IAM abstrait**.
+
+SCIM est utilisé comme référence de nommage quand cela apporte de l'interopérabilité (`externalId`, `displayName`, `emails`, `groups`), mais il n'est pas imposé comme contrat unique car :
+- certaines sources non-SCIM exposent des champs techniques non standards,
+- les besoins SOC et audit demandent des champs de contexte évènementiel,
+- la granularité multi-annuaires (AD, LDAP, applications) dépasse le coeur SCIM sans extensions.
+
+En pratique :
+- topic normalisé : schéma IAM abstrait,
+- compatibilité SCIM : projection possible en sortie API,
+- aucun verrouillage à un annuaire spécifique.
+
 ---
 
 ## 3. Enrichissement
@@ -131,6 +150,7 @@ Le pipeline maintient un **cache d'attributs** par source (LDAP, API applicative
 
 **Attributs LDAP enrichis** :
 - `displayName`, `mail`, `department`, `title`, `manager`
+- `organizationalUnits` (chemin UO complet et UO parent immédiate)
 - `memberOf` (direct seulement, les imbriqués sont résolus si nécessaire)
 - `whenCreated`, `accountExpires`, `userAccountControl`
 

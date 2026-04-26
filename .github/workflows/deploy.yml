@@ -1,175 +1,50 @@
-name: Deploy
+name: Build and Deploy Docker Image
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version à déployer"
+        description: "Version de l'image Docker à déployer"
         required: true
         type: string
-      runner_label:
-        description: "Label du self-hosted runner cible (ex: wec01, wec-client-x)"
-        required: false
-        type: string
-        default: wec
-  workflow_call:
-    inputs:
-      version:
-        required: true
-        type: string
-      runner_label:
-        description: "Label du self-hosted runner cible (ex: wec01, wec-client-x)"
-        required: false
-        type: string
-        default: wec
-    secrets:
-      IAP_LDAP_BIND_PASSWORD:           # sensible — uniquement si DirSync activé
-        required: false
-      IAP_SERVICE_ACCOUNT_PASSWORD:     # mot de passe du compte Windows — init uniquement
-        required: false
 
 jobs:
-  deploy:
-    # Le runner tourne directement sur WEC01 (ZeroTier) — pas de SSH/SCP nécessaire
-    runs-on: [self-hosted, "${{ inputs.runner_label }}"]
-    environment: prod
-
+  build-and-push:
+    runs-on: ubuntu-latest
     steps:
-      - name: Set up Java
-        uses: actions/setup-java@v4
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to DockerHub
+        uses: docker/login-action@v3
         with:
-          distribution: 'temurin'
-          java-version: '21'
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Install Scoop and Maven (if needed)
-        shell: powershell
-        run: |
-          if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
-            Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-            Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
-          }
-          if (-not (Get-Command mvn -ErrorAction SilentlyContinue)) {
-            & "$HOME\scoop\shims\scoop.ps1" install maven
-          }
-          $mavenBin = "$HOME\scoop\apps\maven\current\bin"
-          $env:PATH = "$mavenBin;" + $env:PATH
-          [System.Environment]::SetEnvironmentVariable('PATH', "$mavenBin;" + [System.Environment]::GetEnvironmentVariable('PATH','Process'), 'Process')
-          mvn -version
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/instantaccessprovider:${{ inputs.version }}
 
-      - name: Download agent jar from GitHub Packages
-        shell: powershell
-        run: |
-          $pom = @'
-                <project>
-                  <modelVersion>4.0.0</modelVersion>
-                  <groupId>dummy</groupId>
-                  <artifactId>dummy</artifactId>
-                  <version>1.0.0</version>
-                </project>
-                '@
-          $pomPath = "minimal-pom.xml"
-          $pom | Set-Content $pomPath
-          & "$HOME\scoop\apps\maven\current\bin\mvn.cmd" org.apache.maven.plugins:maven-dependency-plugin:3.6.0:get `
-            -DremoteRepositories=https://maven.pkg.github.com/${{ github.repository_owner }}/InstantAccessPublisher `
-            -Dartifact=com.instantaccesspublisher:agent:${{ inputs.version }}:jar `
-            -Ddest=iap-agent-${{ inputs.version }}.jar `
-            -Dtransitive=false `
-            -f $pomPath
-          Remove-Item $pomPath -Force
+  deploy:
+    needs: build-and-push
+    runs-on: [self-hosted, ubuntu, vps, iap-k3s]
+    steps:
+      - name: Log in to DockerHub
+        run: echo ${{ secrets.DOCKERHUB_TOKEN }} | docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
 
-      - name: Download config zip from GitHub Packages
-        shell: powershell
-        run: |
-          $pom = @'
-                <project>
-                  <modelVersion>4.0.0</modelVersion>
-                  <groupId>dummy</groupId>
-                  <artifactId>dummy</artifactId>
-                  <version>1.0.0</version>
-                </project>
-                '@
-          $pomPath = "minimal-pom.xml"
-          $pom | Set-Content $pomPath
-          & "$HOME\scoop\apps\maven\current\bin\mvn.cmd" org.apache.maven.plugins:maven-dependency-plugin:3.6.0:get `
-            -DremoteRepositories=https://maven.pkg.github.com/${{ github.repository_owner }}/InstantAccessPublisher `
-            -Dartifact=com.instantaccesspublisher:iap-config:${{ inputs.version }}:zip `
-            -Ddest=iap-config.zip `
-            -Dtransitive=false `
-            -f $pomPath
-          Remove-Item $pomPath -Force
-          if (-not (Test-Path iap-config)) { New-Item -ItemType Directory -Path iap-config | Out-Null }
-          & tar -xf iap-config.zip -C iap-config
-          
-      - name: Deploy and configure agent
-        shell: powershell
+      # Optionnel : pré-pull de l'image sur le nœud
+      - name: Pull image (optionnel)
+        run: docker pull ${{ secrets.DOCKERHUB_USERNAME }}/instantaccessprovider:${{ inputs.version }} || true
+
+      - name: Set image in k3s deployment
         env:
-          DEPLOY_PATH:                          ${{ vars.PRODLAB_DEPLOY_PATH }}
-          VERSION:                              ${{ inputs.version }}
-          IAP_INSTANCE_ID:                      ${{ vars.IAP_INSTANCE_ID }}
-          SPRING_KAFKA_BOOTSTRAP_SERVERS:       ${{ vars.SPRING_KAFKA_BOOTSTRAP_SERVERS }}
-          IAP_AGENT_ADAPTERS_WEF_ENABLED:       ${{ vars.IAP_AGENT_ADAPTERS_WEF_ENABLED }}
-          IAP_WEF_SOURCE_ID:                    ${{ vars.IAP_WEF_SOURCE_ID }}
-          IAP_WEF_REMOTE_HOST:                  ${{ vars.IAP_WEF_REMOTE_HOST }}
-          IAP_AGENT_ADAPTERS_DIRSYNC_ENABLED:   ${{ vars.IAP_AGENT_ADAPTERS_DIRSYNC_ENABLED }}
-          IAP_LDAP_URL:                         ${{ vars.IAP_LDAP_URL }}
-          IAP_LDAP_BASE_DN:                     ${{ vars.IAP_LDAP_BASE_DN }}
-          IAP_LDAP_BIND_DN:                     ${{ vars.IAP_LDAP_BIND_DN }}
-          IAP_LDAP_BIND_PASSWORD:               ${{ secrets.IAP_LDAP_BIND_PASSWORD }}
-          IAP_LDAP_POLL_INTERVAL:               ${{ vars.IAP_LDAP_POLL_INTERVAL }}
-          IAP_AGENT_ADAPTERS_WEBHOOK_ENABLED:   ${{ vars.IAP_AGENT_ADAPTERS_WEBHOOK_ENABLED }}
-          IAP_WEBHOOK_PORT:                     ${{ vars.IAP_WEBHOOK_PORT }}
-          IAP_AGENT_ADAPTERS_SYSLOG_ENABLED:    ${{ vars.IAP_AGENT_ADAPTERS_SYSLOG_ENABLED }}
-          IAP_SYSLOG_PORT:                      ${{ vars.IAP_SYSLOG_PORT }}
-          IAP_LOG_LEVEL:                        ${{ vars.IAP_LOG_LEVEL }}
-          IAP_CONFIG_FILE:                      ${{ vars.IAP_CONFIG_FILE }}
-          SPRING_PROFILES_ACTIVE:               ${{ vars.SPRING_PROFILES_ACTIVE }}
-          IAP_SERVICE_ACCOUNT:                  ${{ vars.IAP_SERVICE_ACCOUNT }}
-          IAP_SERVICE_ACCOUNT_PASSWORD:         ${{ secrets.IAP_SERVICE_ACCOUNT_PASSWORD }}
+          KUBECONFIG: ${{ secrets.KUBECONFIG }}
         run: |
-          # ── Préparer le dossier de déploiement ───────────────────────────────
-          New-Item -ItemType Directory -Path $env:DEPLOY_PATH -Force | Out-Null
-
-          # ── Copier le jar et la config ───────────────────────────────────────
-          Copy-Item "iap-agent-$env:VERSION.jar"  "$env:DEPLOY_PATH\" -Force
-          Copy-Item "iap-config\*"                "$env:DEPLOY_PATH\" -Recurse -Force
-
-          # ── Première installation si le service n'existe pas encore ──────────
-          if (-not (Get-Service IapAgent -ErrorAction SilentlyContinue)) {
-            $javaExe = (Get-Command java -ErrorAction Stop).Source
-            New-Item -ItemType Directory -Path "$env:DEPLOY_PATH\logs" -Force | Out-Null
-            & nssm install IapAgent $javaExe
-            & nssm set IapAgent AppParameters "-jar $env:DEPLOY_PATH\iap-agent.jar"
-            & nssm set IapAgent AppDirectory  $env:DEPLOY_PATH
-            & nssm set IapAgent AppStdout     "$env:DEPLOY_PATH\logs\iap-agent.log"
-            & nssm set IapAgent AppStderr     "$env:DEPLOY_PATH\logs\iap-agent-error.log"
-            & nssm set IapAgent ObjectName    $env:IAP_SERVICE_ACCOUNT $env:IAP_SERVICE_ACCOUNT_PASSWORD
-          }
-
-          # ── Mettre à jour le jar actif (init et update) ──────────────────────
-          Copy-Item "$env:DEPLOY_PATH\iap-agent-$env:VERSION.jar" `
-                    "$env:DEPLOY_PATH\iap-agent.jar" -Force
-
-          # ── Synchroniser toutes les variables (env: block = source de vérité) 
-          & nssm set IapAgent AppEnvironmentExtra `
-            "IAP_INSTANCE_ID=$env:IAP_INSTANCE_ID" `
-            "SPRING_KAFKA_BOOTSTRAP_SERVERS=$env:SPRING_KAFKA_BOOTSTRAP_SERVERS" `
-            "IAP_AGENT_ADAPTERS_WEF_ENABLED=$env:IAP_AGENT_ADAPTERS_WEF_ENABLED" `
-            "IAP_WEF_SOURCE_ID=$env:IAP_WEF_SOURCE_ID" `
-            "IAP_WEF_REMOTE_HOST=$env:IAP_WEF_REMOTE_HOST" `
-            "IAP_AGENT_ADAPTERS_DIRSYNC_ENABLED=$env:IAP_AGENT_ADAPTERS_DIRSYNC_ENABLED" `
-            "IAP_LDAP_URL=$env:IAP_LDAP_URL" `
-            "IAP_LDAP_BASE_DN=$env:IAP_LDAP_BASE_DN" `
-            "IAP_LDAP_BIND_DN=$env:IAP_LDAP_BIND_DN" `
-            "IAP_LDAP_BIND_PASSWORD=$env:IAP_LDAP_BIND_PASSWORD" `
-            "IAP_LDAP_POLL_INTERVAL=$env:IAP_LDAP_POLL_INTERVAL" `
-            "IAP_AGENT_ADAPTERS_WEBHOOK_ENABLED=$env:IAP_AGENT_ADAPTERS_WEBHOOK_ENABLED" `
-            "IAP_WEBHOOK_PORT=$env:IAP_WEBHOOK_PORT" `
-            "IAP_AGENT_ADAPTERS_SYSLOG_ENABLED=$env:IAP_AGENT_ADAPTERS_SYSLOG_ENABLED" `
-            "IAP_SYSLOG_PORT=$env:IAP_SYSLOG_PORT" `
-            "IAP_LOG_LEVEL=$env:IAP_LOG_LEVEL" `
-            "IAP_CONFIG_FILE=$env:IAP_CONFIG_FILE" `
-            "SPRING_PROFILES_ACTIVE=$env:SPRING_PROFILES_ACTIVE"
-
-          # ── Démarrer ou redémarrer ────────────────────────────────────────────
-          Stop-Service IapAgent -Force -ErrorAction SilentlyContinue
-          Start-Service IapAgent
+          kubectl set image deployment/instantaccessprovider \
+            instantaccessprovider=${{ secrets.DOCKERHUB_USERNAME }}/instantaccessprovider:${{ inputs.version }}

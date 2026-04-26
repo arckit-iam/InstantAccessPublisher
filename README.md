@@ -3,7 +3,7 @@
 INSTANTACCESSPUBLISHER est une plateforme qui collecte, normalise et diffuse en temps réel les événements liés à la gestion des identités et des accès (IAM) provenant de différentes sources (Active Directory, applications, LDAP, Azure AD, etc.).
 
 ## À quoi ça sert ?
-- Centraliser tous les événements d’identité et d’accès dans un format commun.
+- Centraliser tous les événements d’identité et d’accès dans un format commun ARC (agnostic ressources centraliser).
 - Faciliter la détection d’anomalies de sécurité (SOC, SIEM).
 - Synchroniser automatiquement les changements d’identités vers d’autres systèmes (ITSM, RH, Cloud, etc.).
 

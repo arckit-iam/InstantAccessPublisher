@@ -1,0 +1,29 @@
+{
+  "source": {
+    "sourceId": "ad://iap.local",
+    "sourceType": "active_directory",
+    "channel": "ForwardedEvents",
+    "eventIds": [4720, 4722, 4725, 4726, 4727, 4728, 4729, 4730, 4731, 4732, 4733, 4734, 4738, 4754, 4756, 4757, 4758, 4781]
+  },
+  "kafka": {
+    "mode": "ssh-rpk",
+    "sshPath": "C:/Windows/System32/OpenSSH/ssh.exe",
+    "sshHost": "ubuntu@arckit.fr",
+    "sshOptions": [
+      "-o", "BatchMode=yes",
+      "-o", "ConnectTimeout=8",
+      "-o", "StrictHostKeyChecking=accept-new"
+    ],
+    "remoteProduceCommand": "kubectl -n arckit exec deploy/redpanda -- rpk topic produce",
+    "rpkPath": "C:/Tools/rpk/rpk.exe",
+    "topic": "iam.raw.activedirectory",
+    "rpkConfigOptions": [
+      "brokers=192.168.10.15:9092"
+    ]
+  },
+  "runtime": {
+    "statePath": "C:/iap/state/wef-collector-state.json",
+    "pollIntervalSeconds": 2,
+    "maxEventsPerPoll": 200
+  }
+}

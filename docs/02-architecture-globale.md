@@ -4,13 +4,13 @@
 
 | Principe | Description |
 |---|---|
-| **Event-Driven** | Les sources sont la vérité. Tout changement est un événement immuable. |
-| **Découplage** | Aucun consommateur n'interroge les sources directement. |
-| **Single Source of Truth** | Le topic est le registre des faits, pas une représentation du présent. |
-| **Idempotence** | Les consommateurs doivent tolérer un rejeu sans effet de bord. |
-| **Defense in Depth** | La plateforme elle-même est sécurisée et auditée. |
-| **Haute disponibilité** | Les Agents sont stateless et horizontalement scalables — plusieurs instances en parallèle. |
-| **Segmentation** | Un Agent par zone de sécurité (Tier-0, Production, Cloud…) ou par région géographique. |
+| **Event-Driven** | Les sources sont la vérité. Tout changement est un evenement immuable. |
+| **Decouplage** | Aucun consommateur n'interroge les sources directement. |
+| **Single Source of Truth** | Kafka contient l'historique des faits. L'etat courant est une projection. |
+| **Idempotence** | Les consommateurs et les projections tolerent le rejeu sans effet de bord. |
+| **Defense in Depth** | Collecte, transport, stockage et exposition sont securises et audites. |
+| **Haute disponibilite** | Les collecteurs et les traitements sont deployables en parallele. |
+| **Segmentation** | Un collecteur Fluent Bit par zone de securite ou par region. |
 
 ---
 
@@ -20,65 +20,47 @@
 ╔══════════════════════════════════════════════════════════════════════╗
 ║  COUCHE 1 — SOURCES                                                  ║
 ║                                                                      ║
-║  AD Domain Controllers  ──[WEF / Event Forwarding]──►               ║
-║  ISVD / Équipements     ──[Syslog UDP/TCP/TLS]──────►  vers Agent   ║
-║  Serveurs Linux         ──[Syslog / auditd]─────────►               ║
-║  Applications           ──[Webhook / API REST / CDC]►               ║
-║  OpenLDAP / Entra ID    ──[DirSync / Graph API]─────►               ║
+║  AD Domain Controllers  ──[WEF / Event Forwarding]──► WEC           ║
+║  ISVD / Equipements     ──[Syslog UDP/TCP/TLS]──────► Collecteur    ║
+║  Serveurs Linux         ──[Syslog / auditd]─────────► Collecteur    ║
+║  Applications           ──[Webhook / API REST / CDC]► Collecteur    ║
 ╚══════════════════════════════════════════════════════════════════════╝
                         │
 ╔═══════════════════════▼══════════════════════════════════════════════╗
-║  COUCHE 2 — AGENT (Java, stateless, multi-instances)                 ║
+║  COUCHE 2 — COLLECTEURS FLUENT BIT                                   ║
 ║                                                                      ║
-║  ┌───────────────────────────────────────────────────────────────┐  ║
-║  │                        AGENT                                  │  ║
-║  │                                                               │  ║
-║  │  ┌─────────────────┐  ┌──────────────┐  ┌─────────────────┐  │  ║
-║  │  │ Adapter         │  │ Adapter      │  │ Adapter         │  │  ║
-║  │  │ WEF / EventLog  │  │ Syslog       │  │ Webhook / API   │  │  ║
-║  │  └────────┬────────┘  └──────┬───────┘  └────────┬────────┘  │  ║
-║  │           │                  │                   │            │  ║
-║  │           └──────────────────┴───────────────────┘            │  ║
-║  │                              │                                │  ║
-║  │                    ┌─────────▼─────────┐                      │  ║
-║  │                    │   Normalizer      │                      │  ║
-║  │                    │  (mapping métier) │                      │  ║
-║  │                    └─────────┬─────────┘                      │  ║
-║  │                              │                                │  ║
-║  │                    ┌─────────▼─────────┐                      │  ║
-║  │                    │  Kafka Publisher  │                      │  ║
-║  │                    │  (avec retry /    │                      │  ║
-║  │                    │   buffer disque)  │                      │  ║
-║  │                    └─────────┬─────────┘                      │  ║
-║  └──────────────────────────────┼───────────────────────────────┘  ║
-║                                 │                                   ║
-║  Plusieurs instances en parallèle :                                  ║
-║  Agent-1 (Zone Tier-0)  ─────────────────────────────────────────►  ║
-║  Agent-2 (Zone Prod)    ─────────────────────────────────────────►  ║
-║  Agent-3 (Site London)  ─────────────────────────────────────────►  ║
+║  Fluent Bit tourne sur les serveurs de collecte (WEC, bastions, etc.)║
+║                                                                      ║
+║  - INPUT   : winlog, syslog, tail, http                              ║
+║  - FILTER  : normalisation minimale, tags source/zone                ║
+║  - OUTPUT  : Kafka (iam.raw.{sourceSystem})                          ║
+║                                                                      ║
+║  Plusieurs instances en parallele :                                  ║
+║  FB-Tier0, FB-Prod, FB-Cloud ...                                     ║
 ╚═════════════════════════════════╪════════════════════════════════════╝
                                   │
 ╔═════════════════════════════════▼════════════════════════════════════╗
-║  COUCHE 3 — BROKER / TOPICS KAFKA                                    ║
+║  COUCHE 3 — STREAM PROCESSOR + TOPICS KAFKA                          ║
 ║                                                                      ║
-║   iam.raw.{sourceId}    ← événements bruts par source (interne)     ║
-║   iam.identity          ← identités normalisées (public)            ║
-║   iam.entitlement       ← habilitations normalisées (public)        ║
-║   iam.assignment        ← assignements normalisés (public)          ║
-║   iam.alert             ← alertes SOC (public)                      ║
-║   iam.audit             ← audit trail 365j (archivage)              ║
-║   iam.dlq               ← dead-letter queue (ops)                  ║
+║  iam.raw.{sourceId}      ← evenements bruts par source (interne)    ║
+║  iam.identity            ← evenements normalises Identity            ║
+║  iam.entitlement         ← evenements normalises Entitlement         ║
+║  iam.assignment          ← evenements normalises Assignment          ║
+║  iam.consolidated        ← events de projection etat (upsert-ready)  ║
+║  iam.alert               ← alertes SOC                               ║
+║  iam.audit               ← audit trail long terme                    ║
+║  iam.dlq                 ← dead-letter queue                         ║
 ╚═════════════════════════════════╪════════════════════════════════════╝
                                   │
-         ┌────────────────────────┼──────────────────┐
-         ▼                        ▼                  ▼
-╔════════════════╗ ╔══════════════════╗ ╔══════════════════════╗
-║  SOC           ║ ║  SYNC IAM        ║ ║  AUTRES              ║
-║  • Splunk      ║ ║  • Okta / SCIM   ║ ║  • ServiceNow        ║
-║  • Elastic     ║ ║  • Azure AD      ║ ║  • Data Warehouse    ║
-║  • QRadar      ║ ║  • SailPoint     ║ ║  • Audit Trail       ║
-║  • SOAR        ║ ║  • SIRH maison   ║ ║                      ║
-╚════════════════╝ ╚══════════════════╝ ╚══════════════════════╝
+╔═════════════════════════════════▼════════════════════════════════════╗
+║  COUCHE 4 — INSTANTACCESSPUBLISHER (JAVA) + POSTGRESQL               ║
+║                                                                      ║
+║  Service Java de projection d'etat:                                  ║
+║  - Consomme iam.consolidated                                         ║
+║  - Construit les tables consolidees T0                               ║
+║  - Maintient identity, entitlement, assignment                       ║
+║  - Offre un referentiel temps reel requetable                        ║
+╚══════════════════════════════════════════════════════════════════════╝
 ```
 
 ---
@@ -87,146 +69,116 @@
 
 ### 3.1 Sources
 
-| Source | Transport vers l'Agent | Notes |
+| Source | Transport vers Fluent Bit | Notes |
 |---|---|---|
-| **Active Directory (DCs)** | Windows Event Forwarding (WEF) → WEC Server | Natif Windows, pas d'agent sur les DCs |
-| **Active Directory (fallback)** | DirSync LDAP (polling) | Filet de sécurité si Event Logs partiels |
-| **ISVD / équipements réseau** | Syslog UDP/TCP/TLS (port 514/6514) | Format RFC 5424 ou CEF |
-| **Serveurs Linux** | Syslog (rsyslog/syslog-ng) ou auditd | Vers collecteur Syslog de l'Agent |
-| **Applications métier** | Webhook HTTP, polling REST API, CDC DB | Voir §4 de `docs/11-collecteurs.md` |
-| **Entra ID / Azure AD** | Microsoft Graph API Delta Queries | Roadmap v2 |
+| **Active Directory (DCs)** | WEF vers WEC puis lecture `ForwardedEvents` | Aucun agent sur les DCs |
+| **Active Directory (fallback)** | DirSync LDAP (polling) | Filet de securite en cas de trous Event Logs |
+| **ISVD / equipements reseau** | Syslog UDP/TCP/TLS | Format RFC 5424 ou CEF |
+| **Serveurs Linux** | Syslog / auditd | Collecte locale ou remote |
+| **Applications metier** | Webhook HTTP / API | Adapters progressifs selon besoins |
 
-### 3.2 Agent
+### 3.2 Collecte Fluent Bit
 
-L'**Agent** est le cœur de la collecte. C'est un **service Java, stateless**, configuré par fichier YAML. Il embarque plusieurs **Adapters** — un par protocole de transport — et un **Normalizer** interne.
+Fluent Bit est la brique de collecte standard. Il remplace le developpement d'un agent Java de collecte.
 
-**Responsabilités de l'Agent :**
-- Chaque **Adapter** écoute un protocole source (WEF, Syslog, Webhook, API…)
-- Le **Normalizer** interne mappe les événements bruts vers le modèle IAM abstrait
-- Le **Kafka Publisher** publie dans `iam.raw.{sourceId}` avec retry et buffer disque
-- **Déduplication** : clé SHA-256 sur (EventID + TargetSID + timestamp tronqué à la seconde)
+**Responsabilites de Fluent Bit :**
+- Lire les journaux locaux (ex: `ForwardedEvents` sur WEC)
+- Recevoir des flux reseau (syslog/http selon zone)
+- Ajouter des metadonnees de routage (`sourceSystem`, `sourceZone`, `collectorHost`)
+- Publier vers Kafka avec accusés de reception et reprise
 
-**Ce que l'Agent ne fait PAS :**
-- Il ne prend pas de décision métier (alertes, corrélation) — c'est le Stream Processor
-- Il ne stocke pas d'état persistant — il peut être relancé / scalé librement
+**Ce que Fluent Bit ne fait pas :**
+- Normalisation metier IAM complete
+- Correlation et detection SOC
+- Materialisation de l'etat courant
 
-### 3.3 Haute disponibilité — Multi-instances
-
-L'Agent est conçu pour tourner en **plusieurs instances simultanées** :
-
-```
-AD (DCs) ──[WEF]──► Agent-1  ─┐
-                  Agent-2  ─┤──► topic: iam.raw.activedirectory
-                  Agent-3  ─┘       (Kafka déduplique via clé de partition)
-```
-
-| Axe | Pattern |
-|---|---|
-| **Tolérance aux pannes** | Si Agent-1 tombe, Agent-2 et Agent-3 continuent |
-| **Scalabilité géographique** | Agent-EU, Agent-US, Agent-ASIA — chacun collecte sa région |
-| **Segmentation sécurité** | Agent dédié par zone : Tier-0, Production, Admin, Cloud |
-| **Démarrage** | `agent --config agent-zone-tier0.yml` — même binaire, config différente |
-
-**Segmentation par zone (exemple grand compte) :**
-```
-Zone Tier-0   → Agent-Tier0   → iam.raw.ad.tier0
-Zone Prod     → Agent-Prod    → iam.raw.ad.prod
-Zone Cloud    → Agent-Cloud   → iam.raw.entra-id
-```
-> Les équipes sécurité peuvent ainsi appliquer des politiques d'alerte différentes par zone.
-
-### 3.4 Stream Processor
+### 3.3 Stream Processor
 
 Responsable de :
-- **Consommer** les topics `iam.raw.*` (produits par les Agents)
-- **Normaliser** en schéma CloudEvents (si pas déjà fait par le Normalizer de l'Agent)
-- **Détecter** les patterns métier (ajout à groupe sensible, hors heures ouvrées, corrélation temporelle…)
-- **Enrichir** depuis des sources externes (CMDB, référentiel RH, LDAP)
-- **Router** vers les topics publics (`iam.identity`, `iam.entitlement`, `iam.assignment`, `iam.alert`)
+- Consommer les topics `iam.raw.*`
+- Normaliser en CloudEvents (modele IAM abstrait)
+- Enrichir (LDAP/CMDB) y compris les **UO** Active Directory (DN parent, OU immediate, chemin d'OU)
+- Detecter les patterns et publier `iam.alert`
+- Publier des messages de projection dans `iam.consolidated`
 
-### 3.5 Bus de Messages (Kafka)
+### 3.4 InstantAccessPublisher (nouveau role)
 
-Kafka sert de **registre de faits immuable** :
-- Rétention configurable (90 jours recommandés)
-- Réplication factor ≥ 3 pour HA
-- Schema Registry (Apache / Confluent) pour gouvernance des schémas
+`InstantAccessPublisher` devient un service de **projection d'etat** :
+- Consomme `iam.consolidated`
+- Ecrit en PostgreSQL des tables consolidees :
+  - `identity_state`
+  - `entitlement_state`
+  - `assignment_state`
+- Maintient un etat T0 temps reel et rejouable
+- Gere l'idempotence (upsert par cle metier stable)
+
+### 3.5 Bus de messages (Kafka)
+
+Kafka reste le registre de faits immuable :
+- Retention des faits (90 jours recommandes)
+- Rejeu natif
+- Compatibilite schema via Schema Registry
 
 ### 3.6 Consommateurs
 
-| Famille | Rôle | Protocole |
+| Famille | Role | Protocole |
 |---|---|---|
-| SOC | Ingestion dans SIEM, déclenchement SOAR | Kafka Consumer, Syslog, REST |
-| Sync IAM | Provisioning/deprovisioning dans les systèmes cibles | Kafka Consumer, REST/SCIM |
-| Audit | Archivage long terme, reporting conformité | Kafka Consumer, S3/ADLS |
+| SOC | Ingestion SIEM + SOAR | Kafka Consumer |
+| Sync IAM | Provisioning/deprovisioning | Kafka Consumer, REST/SCIM |
+| Referential interne | Etat consolide T0 | PostgreSQL (alimente par InstantAccessPublisher) |
 
 ---
 
-## 4. Flux de données détaillé
+## 4. Flux de donnees detaille
 
 ```
-DC-01 génère Event 4720 (création compte "john.doe")
+DC-01 genere Event 4720 (creation compte "john.doe")
   │
   ├─[WEF push]─► WEC Server
   │                   │
-  │           ┌───────▼───────────────────────────────┐
-  │           │  AGENT (Java)                         │
-  │           │                                       │
-  │           │  Adapter WEF                          │
-  │           │  - Reçoit l'event brut XML            │
-  │           │  - Filtre Event ID = 4720             │
-  │           │  - Déduplique (EventRecordID + host)  │
-  │           │             │                         │
-  │           │  Normalizer                           │
-  │           │  - Mappe vers RawIamEvent             │
-  │           │  - Ajoute sourceId, detectedAt        │
-  │           │             │                         │
-  │           │  Kafka Publisher                      │
-  │           │  - Publie avec retry + buffer disque  │
-  │           └─────────────┼─────────────────────────┘
+  │           ┌───────▼──────────────────────────────────────┐
+  │           │  Fluent Bit (sur WEC)                        │
+  │           │  - Input winlog ForwardedEvents              │
+  │           │  - Tag sourceSystem=activedirectory          │
+  │           │  - Output Kafka iam.raw.activedirectory      │
+  │           └─────────────┬────────────────────────────────┘
   │                         │
   │           ──────────────► topic: iam.raw.activedirectory
   │                         │
-  │           Stream Processor (Kafka Streams / Flink)
-  │           - Normalise en CloudEvents
-  │           - Détecte: "hors heures ouvrées ? non"
-  │           - Enrichit: manager LDAP, OU appartenances
+  │           Stream Processor
+  │           - Normalise en CloudEvents IAM
+  │           - Enrichit: manager LDAP + UO
+  │           - Detecte et publie iam.alert
+  │           - Produit iam.consolidated
   │                         │
-  │           ──────────────► topic: iam.identity
+  │           ──────────────► topic: iam.consolidated
   │                         │
-  │                 ──────► Consommateur SOC → Splunk/Elastic
-  │                 ──────► Consommateur IAM → Okta (SCIM)
-  │                 ──────► Consommateur ITSM → ServiceNow ticket
-  │
-  │  (si compte créé en dehors des heures ou par un compte non référencé)
-  │           ──────────────► topic: iam.alert
+  │           InstantAccessPublisher (Java)
+  │           - Upsert PostgreSQL identity/entitlement/assignment
   │                         │
-  │                 ──────► SOC → Alerte haute priorité
+  │                 ──────► Referentiel consolide (etat T0)
 ```
 
 ---
 
-## 5. Décisions d'architecture (ADR)
+## 5. Decisions d'architecture (ADR)
 
 ### ADR-001 — WEF vs agent sur chaque DC
-**Décision** : WEF + DirSync comme fallback  
-**Raison** : Limite l'empreinte sur les DCs (agents évités), WEF est natif Windows et résistant aux pannes réseau. DirSync garantit aucune perte en cas de redémarrage DC.
+**Decision** : WEF + DirSync fallback  
+**Raison** : Empreinte minimale sur les DCs, mecanisme natif Windows, reprise fiable.
 
-### ADR-002 — Un Agent multi-adapters plutôt que des collecteurs séparés
-**Décision** : Un binaire Java unique, stateless, avec des Adapters configurables par YAML  
-**Raison** : Simplifie le déploiement et les mises à jour. Un seul processus à monitorer par instance. Le stateless permet de lancer N instances sans coordination.
+### ADR-002 — Fluent Bit plutot qu'un agent Java de collecte
+**Decision** : Standardiser la collecte sur Fluent Bit deploye sur les serveurs de collecte  
+**Raison** : Composant mature, leger, configurable, moins de code specifique a maintenir.
 
-### ADR-003 — Multi-instances pour la Haute Disponibilité
-**Décision** : Plusieurs instances de l'Agent en parallèle, Kafka assure la déduplication par clé de partition  
-**Raison** : Pas de SPOF sur la collecte. Si une instance tombe, les autres continuent. Pas besoin de coordination distribuée complexe entre les instances.
+### ADR-003 — Separation collecte / traitement / projection
+**Decision** : Fluent Bit collecte, Stream Processor normalise/detecte, InstantAccessPublisher materialise l'etat  
+**Raison** : Responsabilites claires, scalabilite independante, operations simplifiees.
 
-### ADR-004 — Kafka comme broker central
-**Décision** : Kafka (ou Azure Event Hubs en mode Kafka-compatible)  
-**Raison** : Rétention configurable, replay natif, écosystème de connecteurs riche.
+### ADR-004 — Topic de projection consolide
+**Decision** : Ajouter `iam.consolidated` pour alimenter le referentiel d'etat  
+**Raison** : Evite de recalculer l'etat en lisant plusieurs topics cote service de projection.
 
-### ADR-005 — CloudEvents comme format d'événement
-**Décision** : Schéma CloudEvents 1.0 + Avro/JSON Schema Registry  
-**Raison** : Standard vendor-neutral, interopérabilité, versioning des schémas.
-
-### ADR-006 — Séparation topic raw vs topic normalisé
-**Décision** : Topics internes `iam.raw.*` (non exposés) + topics publics normalisés  
-**Raison** : Permet l'évolution du Normalizer sans impacter les consommateurs. Le raw permet le rejeu complet en cas de bug.
+### ADR-005 — Schema principal CloudEvents, alignement SCIM partiel
+**Decision** : Conserver le schema IAM abstrait et source-agnostique, avec alignement SCIM quand pertinent  
+**Raison** : SCIM est utile pour l'interoperabilite mais ne couvre pas toute la finesse requise multi-annuaires (notamment certains contextes techniques).

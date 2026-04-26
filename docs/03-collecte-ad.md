@@ -104,7 +104,7 @@ La configuration recommandée est via **GPO** : `Computer Configuration > Window
 WEC Server ──WS-Management──► DC-01 (port 5985)
            ──WS-Management──► DC-02
            ──WS-Management──► DC-0N
-           ──────────────────────────► ForwardedEvents ──► Agent ──► Kafka
+           ──────────────────────────► ForwardedEvents ──► Fluent Bit ──► Kafka
 ```
 
 **Configuration WEC — subscription XML retenue (`CollectorInitiated`)** :
@@ -145,7 +145,7 @@ WEC Server ──WS-Management──► DC-01 (port 5985)
 </Subscription>
 ```
 
-> Le `ContentFormat=Events` transmet le XML brut de l'événement. NXLog/l'Agent Java parsent ce XML directement. `RenderedText` nécessite que les providers de sécurité AD soient présents sur WEC01, ce qui n'est pas le cas hors DC.
+> Le `ContentFormat=Events` transmet le XML brut de l'événement. Fluent Bit publie ce payload vers Kafka pour normalisation en aval. `RenderedText` nécessite que les providers de sécurité AD soient présents sur WEC01, ce qui n'est pas le cas hors DC.
 
 **Avantages WEF** :
 - Natif Windows, aucun agent sur les DCs
@@ -157,33 +157,53 @@ WEC Server ──WS-Management──► DC-01 (port 5985)
 - Latence potentielle (MaxLatencyTime configurable à 1–5s)
 - WEC Server = SPOF si pas redondé
 
-### 2.2 Winlogbeat (Alternative / complément)
+### 2.2 Fluent Bit (mode retenu)
 
-Winlogbeat (Elastic) peut être déployé **sur le WEC** (ou directement sur chaque DC si toléré).
+Fluent Bit est déployé **sur les serveurs de collecte** (WEC, collecteurs syslog, etc.) pour publier vers Kafka.
 
-```yaml
-# winlogbeat.yml
-winlogbeat.event_logs:
-  - name: ForwardedEvents
-    event_id: 4720, 4722, 4725, 4726, 4727, 4728, 4729, 4730,
-              4731, 4732, 4733, 4734, 4738, 4754, 4756, 4757,
-              4758, 4781
-    ignore_older: 72h
-    forwarded: true
+```ini
+# fluent-bit.conf (Windows WEC)
+[SERVICE]
+  Flush        1
+  Log_Level    info
+  storage.path C:\\fluent-bit\\storage
 
-output.kafka:
-  hosts: ["kafka-broker-1:9092", "kafka-broker-2:9092"]
-  topic: "ad.raw.events"
-  required_acks: -1
-  compression: gzip
-  version: "2.8.0"
-  ssl.enabled: true
-  ssl.certificate_authorities: ["/etc/pki/ca.crt"]
+[INPUT]
+  Name               winlog
+  Channels           ForwardedEvents
+  Interval_Sec       1
+  DB                 C:\\fluent-bit\\state\\forwardedevents.db
+  String_Inserts     true
+  Tag                wef.ad
+
+[FILTER]
+  Name    lua
+  Match   wef.ad
+  Script  C:\\fluent-bit\\conf\\wef-ad.lua
+  Call    filter_wef_ad
+
+[FILTER]
+  Name    modify
+  Match   wef.ad
+  Add     sourceSystem ad://corp.example.com
+  Add     sourceType activedirectory
+
+[OUTPUT]
+  Name            kafka
+  Match           wef.ad
+  Brokers         kafka-broker-1:9092,kafka-broker-2:9092
+  Topics          iam.raw.activedirectory
+  Format          json
+  rdkafka.request.required.acks all
 ```
 
-### 2.3 Service AD Watcher (Custom) — .NET / Java / Go
+### 2.3 Winlogbeat (alternative)
 
-Un microservice dédié offre plus de contrôle : déduplication, enrichissement LDAP, gestion du schéma.
+Winlogbeat reste une alternative possible mais n'est pas le choix cible du projet.
+
+### 2.4 Service AD Watcher (Custom) — non retenu
+
+Le développement d'un agent custom de collecte n'est pas retenu. La collecte standard est assurée par Fluent Bit.
 
 ```csharp
 // Exemple pseudo-code C# — Lecture WEF et publication Kafka
@@ -220,7 +240,7 @@ public class AdWatcherService : BackgroundService
 }
 ```
 
-### 2.4 DirSync LDAP (Fallback / Réconciliation)
+### 2.5 DirSync LDAP (Fallback / Réconciliation)
 
 Le protocole **DirSync** (contrôle LDAP `1.2.840.113556.1.4.841`) permet de détecter tous les changements d'attributs LDAP depuis un cookie de synchronisation.
 
@@ -291,24 +311,24 @@ DC ──► WEF Buffer local ──► WEC Server ──► Queue locale ──
 ```
 
 - WEF : bufferisation locale sur chaque DC si le WEC est inaccessible (plusieurs heures)
-- AD Watcher : file d'attente en mémoire / disque avec retry exponentiel vers Kafka
+- Fluent Bit : buffer disque local + retry vers Kafka
 - DirSync : le cookie garantit la reprise depuis le dernier état connu
 
 ---
 
-## 5. Architecture technique — Déploiement WEF + Collecteur + Agent
+## 5. Architecture technique — Déploiement WEF + Collecteur + Fluent Bit
 
 ### 5.1 Vue d'ensemble
 
 L'architecture de collecte AD repose sur trois niveaux distincts, chacun dans sa zone de sécurité :
 
 ```
-[DC (Tier0)] ──WEF──► [Collecteur Windows (Tier1)] ──► [Agent Java (Ubuntu, Tier1)] ──► [Topic Kafka]
-[ISDS]       ──Syslog──────────────────────────────────► [Agent Java (Ubuntu, Tier1)] ──► [Topic Kafka]
-[Autres]     ──Syslog/API──────────────────────────────► [Agent Java (Ubuntu, Tier1)] ──► [Topic Kafka]
+[DC (Tier0)] ──WEF──► [Collecteur Windows (Tier1)] ──► [Fluent Bit (WEC)] ──► [Topic Kafka]
+[ISDS]       ──Syslog──────────────────────────────────► [Fluent Bit (collecteur)] ──► [Topic Kafka]
+[Autres]     ──Syslog/API──────────────────────────────► [Fluent Bit (collecteur)] ──► [Topic Kafka]
 ```
 
-> **Règle fondamentale** : Ubuntu/Linux ne peut pas être un serveur WEC. WEF exige un collecteur Windows. L'Agent Java ne tourne donc pas sur le Collecteur Windows, mais sur un serveur Ubuntu distinct vers lequel les logs sont transférés.
+> **Règle fondamentale** : Ubuntu/Linux ne peut pas être un serveur WEC. WEF exige un collecteur Windows. Fluent Bit tourne sur les serveurs de collecte (WEC, passerelles syslog, etc.) et pousse vers Kafka.
 
 ### 5.2 Contraintes techniques
 
@@ -317,7 +337,7 @@ L'architecture de collecte AD repose sur trois niveaux distincts, chacun dans sa
 | Windows Server 2019/2022/2025 | ✔ Oui | ✔ Oui |
 | Ubuntu / Linux | ✗ Non | ✗ Non |
 
-👉 Le Collecteur Windows est **obligatoire** comme étape intermédiaire entre les DCs Tier0 et l'Agent Java Ubuntu.
+👉 Le Collecteur Windows est **obligatoire** comme étape intermédiaire entre les DCs Tier0 et Kafka.
 
 ### 5.3 Rôle du Collecteur Windows (Tier1)
 
@@ -325,7 +345,7 @@ Le **Collecteur WEF** (Windows Server 2025, membre du domaine, OU Tier1) :
 - Reçoit les événements WEF de tous les DCs via WS-Management (port 5985)
 - Stocke les événements dans le journal `ForwardedEvents`
 - Sert de tampon sécurisé entre Tier0 (DCs) et le reste de l'infrastructure
-- Transfère les événements vers l'Agent Java Ubuntu via **Filebeat**, NXLog ou une API directe
+- Transfère les événements vers Kafka via **Fluent Bit**
 
 **Spécifications recommandées :**
 
@@ -437,53 +457,276 @@ Vérifier la réception :
 Get-WinEvent -LogName ForwardedEvents -MaxEvents 20
 ```
 
-### 5.6 Transfert vers l'Agent Java (Ubuntu)
+### 5.6 Transfert vers Kafka avec Fluent Bit
 
-Le Collecteur Windows envoie les événements depuis `ForwardedEvents` vers l'Agent Java Ubuntu. Trois options :
+Le Collecteur Windows envoie les événements depuis `ForwardedEvents` vers Kafka avec Fluent Bit.
 
-#### Option A — Filebeat (recommandé pour démarrage rapide)
+```ini
+# fluent-bit.conf (complet)
+[SERVICE]
+    Flush                     1
+    Daemon                    Off
+    Log_Level                 info
+    Parsers_File              parsers.conf
+    storage.path              C:\\fluent-bit\\storage
+    storage.sync              normal
+    storage.checksum          Off
+    storage.backlog.mem_limit 64M
 
-```yaml
-# filebeat.yml — sur le Collecteur Windows
-filebeat.inputs:
-  - type: winlog
-    event_logs:
-      - name: ForwardedEvents
-        ignore_older: 24h
+[INPUT]
+    Name                 winlog
+    Channels             ForwardedEvents
+    Interval_Sec         1
+    DB                   C:\\fluent-bit\\state\\forwardedevents.db
+    String_Inserts       True
+    Tag                  wef.ad
+    # Compat Fluent Bit 5.0.2 (Windows): filtrage des Event IDs fait dans le script Lua
 
-output.logstash:
-  hosts: ["ubuntu-agent.corp.example.com:5044"]
+[FILTER]
+    Name                 lua
+    Match                wef.ad
+    Script               C:\\fluent-bit\\conf\\wef-ad.lua
+    Call                 filter_wef_ad
+
+[FILTER]
+    Name                 modify
+    Match                wef.ad
+    Add                  sourceSystem ad://iap.local
+    Add                  sourceType activedirectory
+    Add                  collectorType wec
+
+[OUTPUT]
+    Name                 kafka
+    Match                wef.ad
+    Brokers              kafka-broker:9092
+    Topics               iam.raw.activedirectory
+    Timestamp_Key        @timestamp
+    Timestamp_Format     iso8601_ns
+    Format               json
+    Retry_Limit          False
+    rdkafka.request.required.acks all
+    rdkafka.log.connection.close false
+    rdkafka.compression.codec lz4
 ```
 
+```lua
+-- wef-ad.lua (complet)
+-- Filtrage strict des Event IDs IAM et enrichissement minimal.
+
+local allowed = {
+  ["4720"] = true,
+  ["4722"] = true,
+  ["4725"] = true,
+  ["4726"] = true,
+  ["4727"] = true,
+  ["4728"] = true,
+  ["4729"] = true,
+  ["4730"] = true,
+  ["4731"] = true,
+  ["4732"] = true,
+  ["4733"] = true,
+  ["4734"] = true,
+  ["4738"] = true,
+  ["4754"] = true,
+  ["4756"] = true,
+  ["4757"] = true,
+  ["4758"] = true,
+  ["4781"] = true
+}
+
+local function normalize_event_id(record)
+  local raw = record["EventID"] or record["event_id"] or record["eventId"]
+  if raw == nil then
+    return nil
+  end
+  return tostring(raw)
+end
+
+function filter_wef_ad(tag, ts, record)
+  local eid = normalize_event_id(record)
+  if eid == nil or not allowed[eid] then
+    -- -1: drop record
+    return -1, ts, record
+  end
+
+  record["eventId"] = eid
+  if record["eventFamily"] == nil then
+    record["eventFamily"] = "iam.ad"
+  end
+  if record["schemaVersion"] == nil then
+    record["schemaVersion"] = "1.0"
+  end
+
+  -- 1: record modified and kept
+  return 1, ts, record
+end
 ```
-ForwardedEvents → Filebeat (Windows) → Logstash/Agent (Ubuntu) → Kafka
+
+Chemins recommandés sur WEC :
+
+```text
+C:\fluent-bit\conf\fluent-bit.conf
+C:\fluent-bit\conf\wef-ad.lua
 ```
 
-#### Option B — NXLog
+Test rapide de conformité (PowerShell) :
 
-```
-ForwardedEvents → NXLog (Windows) → UDP/TCP Syslog → SyslogAdapter (Agent Java)
-```
+```powershell
+# Vérifie que seuls les Event IDs cibles arrivent dans ForwardedEvents
+Get-WinEvent -LogName ForwardedEvents -MaxEvents 200 |
+  Group-Object Id |
+  Sort-Object Name |
+  Select-Object Name, Count
 
-Configurer NXLog pour envoyer en Syslog RFC 5424 TCP vers le port d'écoute `SyslogAdapter` de l'Agent Java (ex : 6514).
-
-#### Option C — WEF Adapter direct (Java, roadmap)
-
-L'`WefAdapter` lit directement le journal `ForwardedEvents` via les API Windows (JNA). Dans ce cas, l'Agent Java tourne **sur le Collecteur Windows** (JVM Windows), sans Ubuntu intermédiaire.
-
-```
-ForwardedEvents → WefAdapter (Java/JNA, tourne sur Windows) → Kafka
+# Vérifie la présence d'événements dans Kafka UI sur iam.raw.activedirectory
 ```
 
-> Ce mode est en cours d'implémentation (`WefAdapter.java`). Il supprime l'intermédiaire Filebeat mais nécessite un JRE sur le Collecteur Windows.
+> Note compatibilite Fluent Bit Windows 5.0.2: le plugin `winlog` accepte `channels`, `db`, `interval_sec`, `interval_nsec`, `string_inserts`, `use_ansi`. Les filtres par Event ID doivent etre faits via Lua dans ce document.
+
+```
+ForwardedEvents -> Fluent Bit (WEC) -> Kafka (iam.raw.activedirectory)
+```
+
+#### 5.6.1 Execution en service Windows (WEC)
+
+Commande de creation du service Fluent Bit :
+
+```powershell
+sc.exe create FluentBit binPath= "\"C:\fluent-bit\bin\fluent-bit.exe\" -c \"C:\fluent-bit\conf\fluent-bit.conf\"" start= auto DisplayName= "Fluent Bit"
+```
+
+Commandes d'exploitation :
+
+```powershell
+sc.exe start FluentBit
+sc.exe query FluentBit
+sc.exe stop FluentBit
+```
+
+Configuration redemarrage automatique en cas de crash :
+
+```powershell
+sc.exe failure FluentBit reset= 86400 actions= restart/5000/restart/5000/restart/5000
+sc.exe failureflag FluentBit 1
+sc.exe qfailure FluentBit
+```
+
+Si le service existe deja et doit etre recree :
+
+```powershell
+sc.exe stop FluentBit
+sc.exe delete FluentBit
+sc.exe create FluentBit binPath= "\"C:\fluent-bit\bin\fluent-bit.exe\" -c \"C:\fluent-bit\conf\fluent-bit.conf\"" start= auto DisplayName= "Fluent Bit"
+sc.exe start FluentBit
+sc.exe query FluentBit
+```
 
 ### 5.7 Intégration ISDS (IBM Security Directory Server)
+
+### 5.6.2 Collecteur PowerShell WEC -> Kafka (JSON structure)
+
+Pour les evenements IAM Active Directory, une option plus robuste que `winlog` consiste a lire `ForwardedEvents` via PowerShell, parser le XML natif avec `ToXml()`, structurer le JSON puis publier vers Kafka avec `rpk`.
+
+Fichiers fournis dans le repo :
+
+- `scripts/Publish-IamWefEvents.ps1`
+- `scripts/Publish-IamWefEvents.sample.json`
+
+Exemple de configuration :
+
+```json
+{
+  "source": {
+    "sourceId": "ad://iap.local",
+    "sourceType": "active_directory",
+    "channel": "ForwardedEvents",
+    "eventIds": [4720, 4722, 4725, 4726, 4727, 4728, 4729, 4730, 4731, 4732, 4733, 4734, 4738, 4754, 4756, 4757, 4758, 4781]
+  },
+  "kafka": {
+    "rpkPath": "C:/Tools/rpk/rpk.exe",
+    "topic": "iam.raw.activedirectory.windows",
+    "rpkConfigOptions": [
+      "brokers=192.168.10.15:9092"
+    ]
+  },
+  "runtime": {
+    "statePath": "C:/iap/state/wef-collector-state.json",
+    "pollIntervalSeconds": 2,
+    "maxEventsPerPoll": 200
+  }
+}
+```
+
+Execution manuelle :
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File C:\repo\scripts\Publish-IamWefEvents.ps1 -ConfigPath C:\repo\scripts\Publish-IamWefEvents.sample.json
+```
+
+Le message publie est deja structure :
+
+```json
+{
+  "specversion": "1.0",
+  "id": "<guid>",
+  "source": "ad://iap.local",
+  "type": "com.instantaccessprovider.iam.raw.event",
+  "time": "2026-04-13T00:11:55.0000000Z",
+  "datacontenttype": "application/json",
+  "iamsourcetype": "active_directory",
+  "data": {
+    "sourceId": "ad://iap.local",
+    "sourceType": "active_directory",
+    "nativeEventId": "2031610@DC01.iap.local",
+    "nativeEventType": "4720",
+    "detectedAt": "2026-04-13T00:11:55.0000000Z",
+    "deduplicationKey": "<sha256>",
+    "resourceType": "identity",
+    "resourceRef": "svc-vault-ldap-bind",
+    "system": {
+      "eventId": 4720,
+      "recordId": 2031610,
+      "timeCreated": "2026-04-13T00:11:55.0000000Z",
+      "computer": "DC01.iap.local",
+      "channel": "Security",
+      "provider": "Microsoft-Windows-Security-Auditing"
+    },
+    "eventData": {
+      "TargetUserName": "svc-vault-ldap-bind",
+      "TargetDomainName": "IAP",
+      "SubjectUserName": "administrator.IAP"
+    },
+    "parsed": {
+      "eventType": "identity.created",
+      "actor": {
+        "login": "administrator.IAP",
+        "domain": "IAP"
+      },
+      "target": {
+        "login": "svc-vault-ldap-bind",
+        "domain": "IAP"
+      }
+    },
+    "nativePayload": "<Event>...</Event>"
+  }
+}
+```
+
+Creation d'une tache planifiee sur WEC :
+
+```powershell
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File C:\repo\scripts\Publish-IamWefEvents.ps1 -ConfigPath C:\repo\scripts\Publish-IamWefEvents.sample.json"
+$trigger = New-ScheduledTaskTrigger -AtStartup
+$principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+Register-ScheduledTask -TaskName "IAP-WEF-IAM-Collector" -Action $action -Trigger $trigger -Principal $principal
+Start-ScheduledTask -TaskName "IAP-WEF-IAM-Collector"
+```
 
 ISDS ne supporte pas WEF. Il expose ses événements via :
 
 | Protocole | Détails |
 |---|---|
-| **Syslog** TCP/UDP/TLS | Format BSM ou CEF — récepteur : `SyslogAdapter` de l'Agent |
+| **Syslog** TCP/UDP/TLS | Format BSM ou CEF — récepteur : Fluent Bit |
 | **Audit LDAP** | Requêtes LDAP vers le journal d'audit ISDS |
 | **Fichiers journaux** | Collecte de fichiers `/var/log/...` via agent de fichiers |
 | **SNMP traps** | Alertes opérationnelles (moins pertinent pour IAM) |
@@ -491,7 +734,7 @@ ISDS ne supporte pas WEF. Il expose ses événements via :
 Architecture ISDS → Kafka :
 
 ```
-ISDS → Syslog (TCP 6514) → SyslogAdapter (Agent Java Ubuntu) → iam.raw.isds
+ISDS → Syslog (TCP 6514) → Fluent Bit → iam.raw.isds
 ```
 
 ### 5.8 Architecture finale complète
@@ -508,12 +751,11 @@ ISDS → Syslog (TCP 6514) → SyslogAdapter (Agent Java Ubuntu) → iam.raw.isd
                 │  Collecteur WEF     │  ← Windows Server, Tier1
                 │  (WEC Server)       │    Journal: ForwardedEvents
                 └──────────┬──────────┘
-                           │ Filebeat / NXLog / WefAdapter (Java)
+                           │ Fluent Bit
                            ▼
                 ┌─────────────────────┐
-                │   Agent Java        │  ← Ubuntu, Tier1
-                │   (IAP Agent)       │    SyslogAdapter / WefAdapter
-                │                     │    EventCollectionUseCase
+                │   Fluent Bit        │  ← Windows WEC ou Linux collecteur
+                │   (collecte)        │    winlog / syslog / tail / http
                 └──────────┬──────────┘
                            │
               ┌────────────┴─────────────┐
@@ -521,8 +763,8 @@ ISDS → Syslog (TCP 6514) → SyslogAdapter (Agent Java Ubuntu) → iam.raw.isd
    iam.raw.ad-corp-example-com    iam.raw.isds
         (Topics Kafka)
 
-ISDS ──Syslog TCP 6514──────────────► Agent Java (SyslogAdapter) → iam.raw.isds
-Autres sources ──Syslog/Webhook────► Agent Java → iam.raw.{sourceId}
+ISDS ──Syslog TCP 6514──────────────► Fluent Bit → iam.raw.isds
+Autres sources ──Syslog/Webhook────► Fluent Bit → iam.raw.{sourceId}
 ```
 
 **Flux de sécurité par zone :**
@@ -530,9 +772,9 @@ Autres sources ──Syslog/Webhook────► Agent Java → iam.raw.{sourc
 | Zone | Composant | Protocole sortant |
 |---|---|---|
 | Tier0 | Domain Controllers | WEF → port 5985 vers Collecteur Tier1 |
-| Tier1 (Windows) | Collecteur WEF | Filebeat/NXLog → port 5044/6514 vers Agent Ubuntu |
-| Tier1 (Linux) | Agent Java Ubuntu | Kafka Producer → port 9092 vers Kafka |
-| Tier1 (Linux) | Agent Java Ubuntu | Accepte Syslog sur port 6514 depuis ISDS |
+| Tier1 (Windows) | Collecteur WEF + Fluent Bit | Kafka Producer → port 9092 vers Kafka |
+| Tier1 (Linux) | Fluent Bit (si collecteur Linux) | Kafka Producer → port 9092 vers Kafka |
+| Tier1 (Linux/Windows) | Fluent Bit | Accepte Syslog sur port 6514 depuis ISDS |
 
 ---
 
@@ -557,9 +799,9 @@ Autres sources ──Syslog/Webhook────► Agent Java → iam.raw.{sourc
 │                                              │                   │
 │                                   ForwardedEvents                │
 │                                              │                   │
-│                                              ▼ (à venir)         │
+│                                              ▼                   │
 │                                   ┌─────────────────────┐       │
-│                                   │  NXLog / Agent Java │       │
+│                                   │  Fluent Bit         │       │
 │                                   │  → Kafka            │       │
 │                                   └─────────────────────┘       │
 └─────────────────────────────────────────────────────────────────┘
@@ -570,7 +812,7 @@ Autres sources ──Syslog/Webhook────► Agent Java → iam.raw.{sourc
 | Machine | OS | IP ZeroTier | Rôle |
 |---|---|---|---|
 | DC01.iap.local | Windows Server 2025 (26100, OVH) | 192.168.10.10 | Domain Controller, DNS, source WEF |
-| WEC01.iap.local | Windows Server 2022 (20348, OVH) | 192.168.10.20 | Windows Event Collector, futur hôte NXLog |
+| WEC01.iap.local | Windows Server 2022 (20348, OVH) | 192.168.10.20 | Windows Event Collector, hôte Fluent Bit |
 
 ---
 
@@ -748,29 +990,26 @@ Résultat attendu : Event 4720 (création) et 4726 (suppression) en provenance d
 
 ---
 
-### 6.5 Prochaines étapes — NXLog → Kafka
+### 6.5 Prochaines étapes — Fluent Bit vers Kafka
 
-NXLog CE sera déployé sur WEC01 pour lire `ForwardedEvents` et publier vers Kafka :
-
-```
-ForwardedEvents (WEC01) → NXLog im_msvistalog → om_kafka → topic: iam.raw.ad
-```
-
-Configuration NXLog cible :
+Fluent Bit sera déployé sur WEC01 pour lire `ForwardedEvents` et publier vers Kafka :
 
 ```
-<Input ad_events>
-    Module  im_msvistalog
-    Query   <QueryList><Query Id="0"><Select Path="ForwardedEvents">*</Select></Query></QueryList>
-</Input>
+ForwardedEvents (WEC01) → Fluent Bit (winlog) → output kafka → topic: iam.raw.ad
+```
 
-<Output kafka_out>
-    Module  om_kafka
-    BrokerList  kafka-broker:9092
-    Topic   iam.raw.ad
-</Output>
+Configuration cible :
 
-<Route ad_to_kafka>
-    Path    ad_events => kafka_out
-</Route>
+```ini
+[INPUT]
+  Name     winlog
+  Channels ForwardedEvents
+  Tag      wef.ad
+
+[OUTPUT]
+  Name    kafka
+  Match   wef.ad
+  Brokers kafka-broker:9092
+  Topics  iam.raw.ad
+  Format  json
 ```

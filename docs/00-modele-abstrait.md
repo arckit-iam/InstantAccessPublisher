@@ -192,63 +192,44 @@ ASSIGNMENT EVENTS
 
 ## 4. Architecture des sources (multi-source)
 
-Le principe fondamental : un **Agent Java stateless** embarque plusieurs **Adapters** (un par protocole de transport). Plusieurs instances de l'Agent tournent en parallèle pour la haute disponibilité.
+Le principe fondamental : la collecte est assurée par **Fluent Bit** sur les serveurs de collecte (WEC, collecteurs syslog, etc.). Le traitement métier est assuré en aval par le Stream Processor.
 
 ```
-[AD Domain Controllers]  ──[WEF]──────────────────────────►┐
-[ISVD / équipements]     ──[Syslog]──────────────────────►│
-[Serveurs Linux]         ──[Syslog / auditd]──────────────►│  AGENT
-[Applications]           ──[Webhook / REST / CDC]──────────►│  (Java, stateless)
-[OpenLDAP / Entra ID]    ──[DirSync / Graph API]───────────►│
-                                                         │
-                              ┌────────────────────────────┘
-                              │
-                   ┌─────────▼───────────┐
-                   │  Adapter WEF         │  (lit les EventID AD)
-                   │  Adapter Syslog      │  (parse RFC 5424 / CEF)
-                   │  Adapter Webhook     │  (reçoit les applis)
-                   │  Adapter DirSync     │  (polling LDAP fallback)
-                   └─────────┬───────────┘
-                              │
-                   ┌─────────▼───────────┐
-                   │  Normalizer          │  (mapping métier)
-                   └─────────┬───────────┘
-                              │
-              ┌────────────────────────┬─────────────────────────┬─────────────┐
-              ▼                        ▼                         ▼
-     iam.raw.activedirectory   iam.raw.syslog           iam.raw.{sourceId}
+[AD Domain Controllers]  ──[WEF]──────────────────────────► WEC ──► Fluent Bit ──► iam.raw.activedirectory
+[ISVD / équipements]     ──[Syslog]──────────────────────► Fluent Bit ───────────► iam.raw.syslog
+[Serveurs Linux]         ──[Syslog / auditd]────────────► Fluent Bit ───────────► iam.raw.syslog
+[Applications]           ──[Webhook / REST / CDC]───────► Fluent Bit / bridge ──► iam.raw.{sourceId}
+[OpenLDAP / Entra ID]    ──[DirSync / Graph API]────────► Collecteur dédié ─────► iam.raw.ldap
 
-     (plusieurs instances de l'Agent en parallèle pour la HA)
-     Agent-1 (Zone Tier-0)  ─────────►┐
-     Agent-2 (Zone Prod)    ─────────►│──► topics iam.raw.*
-     Agent-3 (Site London)  ─────────►┘
+       tous les topics raw iam.raw.*
+           │
+      ┌──────────▼──────────┐
+      │  Stream Processor   │
+      │  (normalise/enrichit)
+      └──────────┬──────────┘
+           │
+  ┌──────────────┼──────────────┬──────────────┬────────────────┐
+  ▼              ▼              ▼              ▼                ▼
+[iam.identity] [iam.entitlement] [iam.assignment] [iam.alert] [iam.consolidated]
+                      [iam.audit]
 
-               tous les topics raw iam.raw.*
-                           │
-              ┌──────────▼──────────┐
-              │  Stream Processor     │
-              │  (Kafka Streams)      │
-              └──────────┬──────────┘
-                           │
-      ┌──────────────┼──────────────┬──────────────┐
-      ▼              ▼              ▼              ▼
-[iam.identity] [iam.entitlement] [iam.assignment] [iam.alert]
-                                                  [iam.audit]
+iam.consolidated ──► InstantAccessPublisher (Java) ──► PostgreSQL (etat T0)
 ```
 
-**Responsabilités de l'Adapter (dans l'Agent) :**
-- Écoute un protocole source spécifique (WEF, Syslog, Webhook…)
-- Déduplique les événements avant publication
-- Publie dans `iam.raw.{sourceId}` en format natif brut — **sans logique métier**
+**Responsabilites de Fluent Bit :**
+- Ecoute des protocoles de collecte (winlog/syslog/http/tail)
+- Enrichissement technique minimal (tags source/zone/collector)
+- Publication fiable dans `iam.raw.{sourceId}`
 
-**Responsabilités du Normalizer (dans l'Agent) :**
-- Mappe les champs natifs vers `RawIamEvent`
-- Ajoute `sourceId`, `detectedAt`, `deduplicationKey`
+**Responsabilites du Stream Processor :**
+- Mapping metier vers le modele IAM abstrait
+- Enrichissement (LDAP, CMDB, UO AD)
+- Publication des topics normalises et du topic de projection `iam.consolidated`
 
 **Pourquoi un topic raw par source ?**
 - Rejouer une seule source sans toucher aux autres
 - Schémas bruts différents par source — pas de couplage
-- Isolation des pannes : un Adapter en erreur n'affecte pas les autres
+- Isolation des pannes : un collecteur ou un flux en erreur n'affecte pas les autres
 
 ---
 
