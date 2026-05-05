@@ -192,7 +192,7 @@ ASSIGNMENT EVENTS
 
 ## 4. Architecture des sources (multi-source)
 
-Le principe fondamental : la collecte est assurée par **Fluent Bit** sur les serveurs de collecte (WEC, collecteurs syslog, etc.). Le traitement métier est assuré en aval par le Stream Processor.
+Le principe fondamental : la collecte est assurée par **Fluent Bit** ou **CAESAR** sur les serveurs de collecte (WEC, collecteurs syslog, etc.). Le traitement métier est assuré en aval par le Stream Processor.
 
 ```
 [AD Domain Controllers]  ──[WEF]──────────────────────────► WEC ──► Fluent Bit ──► iam.raw.activedirectory

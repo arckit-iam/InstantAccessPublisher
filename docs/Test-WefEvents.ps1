@@ -125,23 +125,13 @@ try {
         -Office     "Lab" `
         -Server     $Server
 
-    # ------------------------------------------------------------------
-    # Event 4781 — Renommage du compte
-    # ------------------------------------------------------------------
-    Step 4781 "Renommage du compte : $user → $userRenamed"
-    $oldDN = (Get-ADUser -Identity $user -Server $Server).DistinguishedName
-    Rename-ADObject -Identity $oldDN -NewName $userRenamed -Server $Server
-    # Le DN a changé (CN= mis à jour) mais SamAccountName est encore l'ancien
-    # On reconstruit le nouveau DN pour cibler l'objet sans ambiguïté
-    $newDN = "CN=$userRenamed," + ($oldDN -replace '^CN=[^,]+,', '')
-    # Mise à jour du SamAccountName (génère un 4738 supplémentaire)
-    Set-ADUser -Identity $newDN -SamAccountName $userRenamed -Server $Server
+    # ...séquence de renommage supprimée à la demande de l'utilisateur...
 
     # ------------------------------------------------------------------
     # Event 4725 — Désactivation
     # ------------------------------------------------------------------
-    Step 4725 "Désactivation du compte : $userRenamed"
-    Disable-ADAccount -Identity $userRenamed -Server $Server
+    Step 4725 "Désactivation du compte : $user"
+    Disable-ADAccount -Identity $user -Server $Server
 
     # ------------------------------------------------------------------
     # Event 4727 — Création groupe global de sécurité
@@ -159,14 +149,14 @@ try {
     # ------------------------------------------------------------------
     # Event 4728 — Ajout membre au groupe global
     # ------------------------------------------------------------------
-    Step 4728 "Ajout de $userRenamed au groupe global : $grpG"
-    Add-ADGroupMember -Identity $grpG -Members $userRenamed -Server $Server
+    Step 4728 "Ajout de $user au groupe global : $grpG"
+    Add-ADGroupMember -Identity $grpG -Members $user -Server $Server
 
     # ------------------------------------------------------------------
     # Event 4729 — Retrait membre du groupe global
     # ------------------------------------------------------------------
-    Step 4729 "Retrait de $userRenamed du groupe global : $grpG"
-    Remove-ADGroupMember -Identity $grpG -Members $userRenamed -Server $Server -Confirm:$false
+    Step 4729 "Retrait de $user du groupe global : $grpG"
+    Remove-ADGroupMember -Identity $grpG -Members $user -Server $Server -Confirm:$false
 
     # ------------------------------------------------------------------
     # Event 4730 — Suppression groupe global
@@ -190,14 +180,14 @@ try {
     # ------------------------------------------------------------------
     # Event 4732 — Ajout membre au groupe local
     # ------------------------------------------------------------------
-    Step 4732 "Ajout de $userRenamed au groupe local : $grpL"
-    Add-ADGroupMember -Identity $grpL -Members $userRenamed -Server $Server
+    Step 4732 "Ajout de $user au groupe local : $grpL"
+    Add-ADGroupMember -Identity $grpL -Members $user -Server $Server
 
     # ------------------------------------------------------------------
     # Event 4733 — Retrait membre du groupe local
     # ------------------------------------------------------------------
-    Step 4733 "Retrait de $userRenamed du groupe local : $grpL"
-    Remove-ADGroupMember -Identity $grpL -Members $userRenamed -Server $Server -Confirm:$false
+    Step 4733 "Retrait de $user du groupe local : $grpL"
+    Remove-ADGroupMember -Identity $grpL -Members $user -Server $Server -Confirm:$false
 
     # ------------------------------------------------------------------
     # Event 4734 — Suppression groupe local
@@ -221,14 +211,14 @@ try {
     # ------------------------------------------------------------------
     # Event 4756 — Ajout membre au groupe universel
     # ------------------------------------------------------------------
-    Step 4756 "Ajout de $userRenamed au groupe universel : $grpU"
-    Add-ADGroupMember -Identity $grpU -Members $userRenamed -Server $Server
+    Step 4756 "Ajout de $user au groupe universel : $grpU"
+    Add-ADGroupMember -Identity $grpU -Members $user -Server $Server
 
     # ------------------------------------------------------------------
     # Event 4757 — Retrait membre du groupe universel
     # ------------------------------------------------------------------
-    Step 4757 "Retrait de $userRenamed du groupe universel : $grpU"
-    Remove-ADGroupMember -Identity $grpU -Members $userRenamed -Server $Server -Confirm:$false
+    Step 4757 "Retrait de $user du groupe universel : $grpU"
+    Remove-ADGroupMember -Identity $grpU -Members $user -Server $Server -Confirm:$false
 
     # ------------------------------------------------------------------
     # Event 4758 — Suppression groupe universel
@@ -239,8 +229,8 @@ try {
     # ------------------------------------------------------------------
     # Event 4726 — Suppression du compte utilisateur
     # ------------------------------------------------------------------
-    Step 4726 "Suppression du compte utilisateur : $userRenamed"
-    Remove-ADUser -Identity $userRenamed -Server $Server -Confirm:$false
+    Step 4726 "Suppression du compte utilisateur : $user"
+    Remove-ADUser -Identity $user -Server $Server -Confirm:$false
 
     Write-Host "`n╔══════════════════════════════════════════════════════════════╗" -ForegroundColor Green
     Write-Host "║  Tous les événements ont été déclenchés avec succès.         ║" -ForegroundColor Green
