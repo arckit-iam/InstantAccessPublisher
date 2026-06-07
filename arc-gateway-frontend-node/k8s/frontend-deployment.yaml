@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arc-gateway-frontend-node
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: arc-gateway-frontend-node
+  template:
+    metadata:
+      labels:
+        app: arc-gateway-frontend-node
+    spec:
+      containers:
+        - name: frontend
+          image: arc-gateway-frontend-node:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 15

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Arc Gateway Frontend</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="bg-shape bg-shape-a"></div>
+    <div class="bg-shape bg-shape-b"></div>
+
+    <main class="layout">
+      <header class="hero">
+        <p class="kicker">Arc Gateway</p>
+        <h1>Kerberos-secured Product Console</h1>
+        <p>
+          This UI sends requests to <code>/api/*</code>. SPNEGO is negotiated by the browser against
+          <strong>arc-gateway.arckit.fr</strong>.
+        </p>
+      </header>
+
+      <section class="card">
+        <h2>Request Builder</h2>
+        <div class="grid">
+          <label>
+            Product code
+            <input id="productCode" type="text" value="ACE" placeholder="ACE" />
+          </label>
+          <label>
+            Product id
+            <input id="productId" type="text" value="42" placeholder="42" />
+          </label>
+          <label>
+            Profile name
+            <input id="profileName" type="text" value="admin-profile" />
+          </label>
+          <label>
+            Profile scope
+            <input id="profileScope" type="text" value="TIER1" />
+          </label>
+          <label class="full">
+            Profile description
+            <input id="profileDescription" type="text" value="Admin profile" />
+          </label>
+        </div>
+
+        <div class="actions">
+          <button id="btnList" class="btn">GET /api/products</button>
+          <button id="btnGetById" class="btn">GET /api/products/{id}</button>
+          <button id="btnCreateProfile" class="btn btn-primary">POST /api/products/{code}/profiles</button>
+        </div>
+      </section>
+
+      <section class="card output">
+        <h2>Response</h2>
+        <div class="meta">
+          <span id="statusBadge" class="badge">idle</span>
+          <span id="timing" class="timing"></span>
+        </div>
+        <pre id="output">Run a request to see response details.</pre>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
