@@ -1,0 +1,6 @@
+---
+apiVersion: v2
+name: arc-gateway-frontend-node
+version: 0.1.0
+description: Arc Gateway Frontend Node Helm chart
+appVersion: "0.1.0"

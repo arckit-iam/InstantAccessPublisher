@@ -67,8 +67,54 @@ document.getElementById("btnGetById").addEventListener("click", () => {
   callApi(`/api/products/${id}`, { method: "GET" });
 });
 
+document.getElementById("btnGetByName").addEventListener("click", () => {
+  const name = encodeURIComponent(value("productName") || "mon-application");
+  callApi(`/api/products/${name}`, { method: "GET" });
+});
+
+document.getElementById("btnCreateProduct").addEventListener("click", () => {
+  const payload = {
+    name: value("productName") || "mon-application",
+    description: value("productDescription") || "Application metier"
+  };
+
+  callApi("/api/products", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+});
+
+document.getElementById("btnUpdateProduct").addEventListener("click", () => {
+  const name = encodeURIComponent(value("productName") || "mon-application");
+  const payload = {
+    name: value("productName") || "mon-application",
+    description: value("productDescription") || "Application metier"
+  };
+
+  callApi(`/api/products/${name}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+});
+
+document.getElementById("btnDeleteProduct").addEventListener("click", () => {
+  const name = encodeURIComponent(value("productName") || "mon-application");
+  callApi(`/api/products/${name}`, { method: "DELETE" });
+});
+
+document.getElementById("btnListProfiles").addEventListener("click", () => {
+  const name = encodeURIComponent(value("productName") || value("productCode") || "ACE");
+  callApi(`/api/products/${name}`, { method: "GET" });
+});
+
 document.getElementById("btnCreateProfile").addEventListener("click", () => {
-  const code = encodeURIComponent(value("productCode") || "ACE");
+  const code = encodeURIComponent(value("productCode") || value("productName") || "ACE");
   const payload = {
     name: value("profileName") || "admin-profile",
     description: value("profileDescription") || "Admin profile",
@@ -81,5 +127,31 @@ document.getElementById("btnCreateProfile").addEventListener("click", () => {
       "Content-Type": "application/json"
     },
     body: JSON.stringify(payload)
+  });
+});
+
+document.getElementById("btnUpdateProfile").addEventListener("click", () => {
+  const productName = encodeURIComponent(value("productName") || value("productCode") || "ACE");
+  const profileName = encodeURIComponent(value("profileNameExisting") || value("profileName") || "admin-profile");
+  const payload = {
+    name: value("profileName") || "admin-profile",
+    description: value("profileDescription") || "Admin profile",
+    scope: value("profileScope") || "TIER1"
+  };
+
+  callApi(`/api/products/${productName}/profiles/${profileName}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+});
+
+document.getElementById("btnDeleteProfile").addEventListener("click", () => {
+  const productName = encodeURIComponent(value("productName") || value("productCode") || "ACE");
+  const profileName = encodeURIComponent(value("profileNameExisting") || value("profileName") || "admin-profile");
+  callApi(`/api/products/${productName}/profiles/${profileName}`, {
+    method: "DELETE"
   });
 });

@@ -1,0 +1,13 @@
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: arc-kubeorchestrator
+  namespace: flux-system
+spec:
+  interval: 1m0s
+  url: https://github.com/arckit-iam/arc-kubeorchestrator
+  ref:
+    branch: main
+  secretRef:
+    name: arc-kubeorchestrator-git-token

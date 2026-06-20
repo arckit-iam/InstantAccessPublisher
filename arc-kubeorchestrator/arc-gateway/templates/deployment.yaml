@@ -1,0 +1,64 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arc-gateway
+  namespace: {{.Release.Namespace}}
+spec:
+  replicas: {{.Values.replicaCount}}
+  selector:
+    matchLabels:
+      app: arc-gateway
+  template:
+    metadata:
+      labels:
+        app: arc-gateway
+    spec:
+      imagePullSecrets:
+        - name: ghcr
+      containers:
+        - name: arc-gateway
+          image: "{{.Values.image.repository}}:{{.Values.image.tag}}"
+          imagePullPolicy: {{.Values.image.pullPolicy}}
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: arc-gateway-config
+          env:
+            - name: BASIC_AUTH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{.Values.auth.basicPasswordSecretName}}
+                  key: {{.Values.auth.basicPasswordSecretKey}}
+                  optional: true
+          volumeMounts:
+            - name: keytab
+              mountPath: /etc/arc-gateway
+              readOnly: true
+            - name: krb5-conf
+              mountPath: /etc/krb5.conf
+              subPath: krb5.conf
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: keytab
+          secret:
+            secretName: {{.Values.kerberos.keytabSecretName}}
+            items:
+              - key: {{.Values.kerberos.keytabSecretKey}}
+                path: arc-gateway.keytab
+        - name: krb5-conf
+          configMap:
+            name: arc-gateway-krb5

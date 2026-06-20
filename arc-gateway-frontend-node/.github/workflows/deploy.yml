@@ -1,0 +1,51 @@
+name: Deploy
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Version de l'image Docker a deployer"
+        required: true
+        type: string
+      env_name:
+        description: "Nom de l'environnement GitHub"
+        required: false
+        type: string
+        default: "prod"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version de l'image Docker a deployer"
+        required: true
+        type: string
+      env_name:
+        description: "Nom de l'environnement GitHub"
+        required: false
+        type: string
+        default: "prod"
+
+jobs:
+  deploy:
+    environment: ${{ inputs.env_name }}
+    runs-on: [self-hosted, arc-gateway]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Write kubeconfig to file
+        run: echo "${{ secrets.KUBECONFIG }}" > kubeconfig.yaml
+
+      - name: Helm chart sanity check
+        run: |
+          test -f k8s/Chart.yaml
+          echo "Preparing deployment for arc-gateway-frontend-node version ${{ inputs.version }} to env ${{ inputs.env_name }}"
+
+      - name: Apply all FluxCD manifests (k8s/flux)
+        env:
+          KUBECONFIG: ${{ github.workspace }}/kubeconfig.yaml
+        run: |
+          kubectl apply -f k8s/flux/
+
+      - name: Clean up kubeconfig
+        if: always()
+        run: rm -f kubeconfig.yaml

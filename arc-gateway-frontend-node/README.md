@@ -53,7 +53,32 @@ docker build -t arc-gateway-frontend-node:local .
 docker run --rm -p 3000:3000 arc-gateway-frontend-node:local
 ```
 
-## 7) Troubleshooting
+## 7) Kubernetes / Helm / Flux
+
+This repository now follows the same GitOps layout as other InstantAccessProvider services.
+
+- Helm chart: `k8s/Chart.yaml`, `k8s/values.yaml`, `k8s/templates/*`
+- Flux resources: `k8s/flux/*`
+
+Key routing in chart ingress:
+
+- `/api` -> `arc-gateway` service (`8080`)
+- `/` -> `arc-gateway-frontend-node` service (`3000`)
+
+Manual bootstrap (if needed):
+
+```bash
+kubectl apply -f k8s/flux/
+```
+
+## 8) GitHub Workflows
+
+- `build.yml`: build/push image + bump HelmRelease to `VERSION-dev`
+- `promote.yml`: promote `dev -> rc -> stable/latest`
+- `deploy.yml`: apply Flux manifests from `k8s/flux/`
+- `bump-helmrelease.yml`: open PR to bump HelmRelease to release version
+
+## 9) Troubleshooting
 
 - `401` from `/api/*`: browser did not send Negotiate token, or no TGT.
 - `404` from `/api/*`: backend route exists in gateway but target microservice endpoint is missing.

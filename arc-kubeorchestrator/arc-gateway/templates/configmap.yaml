@@ -1,0 +1,16 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: arc-gateway-config
+  namespace: {{.Release.Namespace}}
+data:
+  SPRING_PROFILES_ACTIVE: "prod"
+  AUTH_MODE: "{{.Values.auth.mode}}"
+  BASIC_AUTH_USER: "{{.Values.auth.basicUser}}"
+  AUTH_LDAP_URL: "{{.Values.auth.ldapUrl}}"
+  AUTH_LDAP_DOMAIN: "{{.Values.auth.ldapDomain}}"
+  SERVER_PORT: "{{.Values.server.port}}"
+  PRODUCT_MANAGER_URL: "{{.Values.productManager.url}}"
+  KERBEROS_SERVICE_PRINCIPAL: "{{.Values.kerberos.servicePrincipal}}"
+  KERBEROS_KEYTAB_LOCATION: "/etc/arc-gateway/arc-gateway.keytab"

@@ -24,7 +24,7 @@
       </header>
 
       <section class="card">
-        <h2>Request Builder</h2>
+        <h2>Products</h2>
         <div class="grid">
           <label>
             Product code
@@ -35,8 +35,35 @@
             <input id="productId" type="text" value="42" placeholder="42" />
           </label>
           <label>
+            Product name
+            <input id="productName" type="text" value="mon-application" placeholder="mon-application" />
+          </label>
+          <label>
+            Product description
+            <input id="productDescription" type="text" value="Application metier" />
+          </label>
+        </div>
+
+        <div class="actions">
+          <button id="btnList" class="btn">GET /api/products</button>
+          <button id="btnGetById" class="btn">GET /api/products/{id}</button>
+          <button id="btnGetByName" class="btn">GET /api/products/{name}</button>
+          <button id="btnCreateProduct" class="btn btn-primary">POST /api/products</button>
+          <button id="btnUpdateProduct" class="btn">PUT /api/products/{name}</button>
+          <button id="btnDeleteProduct" class="btn btn-danger">DELETE /api/products/{name}</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Profiles</h2>
+        <div class="grid">
+          <label>
             Profile name
             <input id="profileName" type="text" value="admin-profile" />
+          </label>
+          <label>
+            Existing profile name
+            <input id="profileNameExisting" type="text" value="admin-profile" />
           </label>
           <label>
             Profile scope
@@ -49,9 +76,10 @@
         </div>
 
         <div class="actions">
-          <button id="btnList" class="btn">GET /api/products</button>
-          <button id="btnGetById" class="btn">GET /api/products/{id}</button>
+          <button id="btnListProfiles" class="btn">GET /api/products/{name} (profiles)</button>
           <button id="btnCreateProfile" class="btn btn-primary">POST /api/products/{code}/profiles</button>
+          <button id="btnUpdateProfile" class="btn">PUT /api/products/{name}/profiles/{profile}</button>
+          <button id="btnDeleteProfile" class="btn btn-danger">DELETE /api/products/{name}/profiles/{profile}</button>
         </div>
       </section>
 
