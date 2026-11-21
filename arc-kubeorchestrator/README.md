@@ -28,12 +28,18 @@ arc-kubeorchestrator/
 │   ├── values.yaml
 │   ├── templates/
 │   └── postgres/           # Ressources PostgreSQL (StatefulSet, PVC, etc.)
+├── product-manager/        # Helm chart product-manager (profile)
+│   ├── Chart.yaml
+│   ├── values.yaml
+│   ├── templates/
+│   └── postgres/           # Ressources PostgreSQL (StatefulSet, PVC, etc.)
 └── flux/                   # Ressources Flux CD
     ├── gitrepo.yaml        # GitRepository unique → arc-kubeorchestrator
     ├── arc-agent-ad/
     ├── arc-consolidator/
     ├── arc-gateway/
-    └── arc-publisher/
+    ├── arc-publisher/
+    └── product-manager/
 ```
 
 ## Flux CD
@@ -50,6 +56,7 @@ kubectl apply -f flux/arc-publisher/
 kubectl apply -f flux/arc-consolidator/
 kubectl apply -f flux/arc-gateway/
 kubectl apply -f flux/arc-agent-ad/
+kubectl apply -f flux/product-manager/
 ```
 
 ## Mise à jour d'un tag d'image
