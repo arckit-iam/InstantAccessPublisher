@@ -1,6 +1,10 @@
 ---
 # Ce ConfigMap embarque le script init.sql dans le pod PostgreSQL.
 # PostgreSQL l'exécute automatiquement à la première création de la base.
+#
+# SOURCE DE VÉRITÉ : arc-publisher/src/main/resources/db/init.sql (dépôt arc-publisher).
+# Ce contenu en est une copie : toute modification du schéma se fait d'abord dans le projet,
+# puis est recopiée ici (Helm ne peut pas lire un fichier hors du chart).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -19,12 +23,14 @@ data:
         entitlement_id  VARCHAR(255),
         entitlement_name VARCHAR(255),
         scope           VARCHAR(255),
+        source          VARCHAR(255),
         execute_at      TIMESTAMPTZ  NOT NULL,
         created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
         correlation_id  VARCHAR(255),
         status          VARCHAR(20)  NOT NULL DEFAULT 'PENDING'
     );
 
+    -- Table des attributs additionnels (map clé/valeur)
     CREATE TABLE IF NOT EXISTS provisioning_job_attributes (
         job_id     UUID         NOT NULL REFERENCES provisioning_jobs(id) ON DELETE CASCADE,
         attr_key   VARCHAR(100) NOT NULL,
@@ -32,10 +38,12 @@ data:
         PRIMARY KEY (job_id, attr_key)
     );
 
+    -- Index pour la requête des jobs dus
     CREATE INDEX IF NOT EXISTS idx_jobs_status_execute_at
         ON provisioning_jobs (status, execute_at)
         WHERE status = 'PENDING';
 
+    -- Fonction de notification PostgreSQL
     CREATE OR REPLACE FUNCTION notify_job_created()
     RETURNS TRIGGER AS $$
     BEGIN
@@ -44,6 +52,7 @@ data:
     END;
     $$ LANGUAGE plpgsql;
 
+    -- Trigger : émet NOTIFY à chaque insertion d'un job PENDING
     CREATE TRIGGER trg_job_created
     AFTER INSERT ON provisioning_jobs
     FOR EACH ROW
