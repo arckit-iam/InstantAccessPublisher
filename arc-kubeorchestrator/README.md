@@ -64,7 +64,7 @@ Flux CD détectera le changement et redéploiera automatiquement.
 | [docs/DEPLOY.md](docs/DEPLOY.md) | Guide de déploiement à destination des intégrateurs |
 | [docs/CI-CD.md](docs/CI-CD.md) | Pipelines d'intégration et de déploiement, bump des tags |
 
-La documentation d'architecture et de conception de la plateforme est dans le dépôt [arc-docs](https://github.com/EtiennSalle/arc-docs).
+La documentation d'architecture et de conception de la plateforme est dans le dépôt [arc-docs](https://github.com/arckit-iam/arc-docs).
 
 ## Licence
 

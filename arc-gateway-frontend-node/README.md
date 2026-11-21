@@ -83,3 +83,9 @@ kubectl apply -f k8s/flux/
 - `401` from `/api/*`: browser did not send Negotiate token, or no TGT.
 - `404` from `/api/*`: backend route exists in gateway but target microservice endpoint is missing.
 - `CORS` errors: requests are cross-origin. Prefer same host deployment.
+
+## License
+
+Copyright © 2026 Dédale Solutions
+
+Licensed under the [EUPL-1.2](LICENSE) (European Union Public Licence v. 1.2).
