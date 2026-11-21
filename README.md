@@ -99,6 +99,12 @@ Un agent est un composant autonome déployé côté système cible. Il consomme 
 
 ---
 
+## Intégration et déploiement
+
+Le déploiement GitOps (Helm, FluxCD) est géré dans un dépôt privé. L'intégration et la mise en production de la plateforme sont proposées par Dédale Solutions en **service payant** : pour en discuter, contactez-nous via le profil GitHub de l'organisation [arckit-iam](https://github.com/arckit-iam).
+
+---
+
 ## Documentation
 
 - [arc-docs](https://github.com/arckit-iam/arc-docs) : architecture, modèle abstrait IAM, collecte, SOC.
