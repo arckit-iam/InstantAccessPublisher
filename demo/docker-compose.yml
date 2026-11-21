@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: EUPL-1.2
 
 # Démonstration locale de la chaîne ARC, sans Active Directory ni Kubernetes.
-# Les composants sont construits depuis leurs dépôts publics ; l'agent AD
+# Les composants utilisent les images stables publiées sur GHCR ; l'agent AD
 # tourne en mode simulation (dry-run) et ne contacte aucun annuaire.
 # Usage : voir la section « Démarrage rapide » du README.
 
@@ -59,7 +59,8 @@ services:
       retries: 10
 
   arc-consolidator:
-    build: https://github.com/arckit-iam/arc-consolidator.git#main
+    image: ghcr.io/arckit-iam/arc-consolidator:stable
+    platform: linux/amd64
     depends_on:
       topics-init:
         condition: service_completed_successfully
@@ -68,7 +69,8 @@ services:
       SPRING_KAFKA_PRODUCER_BOOTSTRAP_SERVERS: redpanda:9092
 
   arc-publisher:
-    build: https://github.com/arckit-iam/arc-publisher.git#main
+    image: ghcr.io/arckit-iam/arc-publisher:stable
+    platform: linux/amd64
     depends_on:
       topics-init:
         condition: service_completed_successfully
@@ -84,7 +86,8 @@ services:
       - "127.0.0.1:8081:8081"
 
   arc-agent-ad:
-    build: https://github.com/arckit-iam/arc-agent-ad.git#main
+    image: ghcr.io/arckit-iam/arc-agent-ad:stable
+    platform: linux/amd64
     depends_on:
       topics-init:
         condition: service_completed_successfully

@@ -103,11 +103,11 @@ Un agent est un composant autonome déployé côté système cible. Il consomme 
 
 Un `docker compose` de démonstration ([`demo/`](demo/)) lance toute la chaîne en local : Redpanda, PostgreSQL, `arc-consolidator`, `arc-publisher` et `arc-agent-ad`. L'agent tourne en mode **dry-run** : il journalise les opérations sans toucher à un Active Directory, aucun AD n'est donc nécessaire.
 
-Prérequis : Docker avec Compose v2. Les trois services sont construits depuis leurs dépôts GitHub publics (le premier démarrage prend quelques minutes).
+Prérequis : Docker avec Compose v2. Les trois services utilisent les images stables publiées sur GHCR (`ghcr.io/arckit-iam/<service>:stable`, architecture `linux/amd64`, émulée sur les machines ARM).
 
 ```bash
 # 1. Démarrer la pile
-docker compose -f demo/docker-compose.yml up -d --build
+docker compose -f demo/docker-compose.yml up -d
 
 # 2. Injecter un événement brut Active Directory (création de compte, EventID 4720)
 docker compose -f demo/docker-compose.yml exec -T redpanda \
