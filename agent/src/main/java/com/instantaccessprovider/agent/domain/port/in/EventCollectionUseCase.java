@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dédale Solutions
+// SPDX-License-Identifier: EUPL-1.2
+
 package com.instantaccessprovider.agent.domain.port.in;
 
 import com.instantaccessprovider.agent.domain.model.RawIamEvent;

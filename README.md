@@ -111,5 +111,11 @@ Les applications SaaS qui souhaitent publier leurs données IAM :
 
 ## Documentation
 
-- [arc-docs](https://github.com/EtiennSalle/arc-docs) : architecture, modèle abstrait IAM, collecte, SOC.
+- [arc-docs](https://github.com/arckit-iam/arc-docs) : architecture, modèle abstrait IAM, collecte, SOC.
 - [arc-kubeorchestrator](https://github.com/arckit-iam/arc-kubeorchestrator/tree/main/docs) : déploiement, Helm, Flux et CI/CD.
+
+## Licence
+
+Copyright © 2026 Dédale Solutions
+
+Ce projet est distribué sous la licence [EUPL-1.2](LICENSE) (European Union Public Licence v. 1.2). La documentation (gent/docs/) est sous licence CC-BY-4.0.

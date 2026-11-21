@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dédale Solutions
+// SPDX-License-Identifier: EUPL-1.2
+
 package com.instantaccessprovider.agent.infrastructure.out.kafka.schema;
 
 import com.fasterxml.jackson.annotation.JsonProperty;

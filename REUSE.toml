@@ -1,0 +1,17 @@
+version = 1
+SPDX-PackageName = "InstantAccessProvider"
+SPDX-PackageSupplier = "Dédale Solutions"
+
+# Fichiers sans en-tête SPDX intégré (les fichiers Java portent leur propre en-tête).
+[[annotations]]
+path = "**"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Dédale Solutions"
+SPDX-License-Identifier = "EUPL-1.2"
+
+# Documentation : CC-BY-4.0.
+[[annotations]]
+path = "agent/docs/**"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Dédale Solutions"
+SPDX-License-Identifier = "CC-BY-4.0"

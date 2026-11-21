@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dédale Solutions
+// SPDX-License-Identifier: EUPL-1.2
+
 package com.instantaccessprovider.agent.infrastructure.in.dirsync;
 
 import com.instantaccessprovider.agent.config.AgentProperties;
