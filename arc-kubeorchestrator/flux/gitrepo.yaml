@@ -9,5 +9,11 @@ spec:
   url: https://github.com/arckit-iam/arc-kubeorchestrator
   ref:
     branch: main
+  ignore: |
+    /docs/
+    /README.md
+    /LICENSE
+    /LICENSES/
+    /REUSE.toml
   secretRef:
     name: arc-kubeorchestrator-git-token

@@ -56,3 +56,21 @@ kubectl apply -f flux/arc-agent-ad/
 
 Modifier la valeur `image.tag` dans le fichier `flux/<service>/helmrelease.yaml` correspondant, puis pousser le commit.  
 Flux CD détectera le changement et redéploiera automatiquement.
+
+## Documentation
+
+| Document | Contenu |
+|---|---|
+| [docs/DEPLOY.md](docs/DEPLOY.md) | Guide de déploiement à destination des intégrateurs |
+| [docs/CI-CD.md](docs/CI-CD.md) | Pipelines d'intégration et de déploiement, bump des tags |
+
+La documentation d'architecture et de conception de la plateforme est dans le dépôt [arc-docs](https://github.com/EtiennSalle/arc-docs).
+
+## Licence
+
+Copyright © 2026 Dédale Solutions
+
+Licensed under the EUPL
+
+- Charts Helm et ressources Flux : [EUPL-1.2](LICENSES/EUPL-1.2.txt).
+- Documentation (`README.md`, `docs/`) : [CC-BY-4.0](LICENSES/CC-BY-4.0.txt).

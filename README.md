@@ -1,4 +1,4 @@
-﻿# Instant Access Provider
+# Instant Access Provider
 
 Instant Access Provider est une plateforme qui collecte, normalise et diffuse en temps réel les événements liés à la gestion des identités et des accès (IAM) provenant de différentes sources (Active Directory, applications, LDAP, Azure AD, etc.), et orchestre le provisioning automatique des droits dans les systèmes cibles.
 
@@ -28,6 +28,7 @@ Instant Access Provider est une plateforme qui collecte, normalise et diffuse en
 | `arc-consolidator` | Consomme les événements bruts (`iam.raw.*`), les normalise et publie sur `arc.sync.*` |
 | `arc-publisher` | Orchestre les jobs de provisioning et publie les commandes sur `arc.provisioning.*` |
 | `arc-agent-{cible}` | Consomme `arc.provisioning.*` et exécute les opérations sur le système cible |
+| `profile` (product-manager) | Service métier de gestion des profils et permissions par produit. Appelle `arc-publisher` (`POST /jobs`) pour créer ou supprimer le groupe AD associé à chaque profil |
 
 ---
 
@@ -108,4 +109,7 @@ Les applications SaaS qui souhaitent publier leurs données IAM :
 
 ---
 
-Pour plus de détails techniques, voir la documentation dans le dossier `doc/`.
+## Documentation
+
+- [arc-docs](https://github.com/EtiennSalle/arc-docs) : architecture, modèle abstrait IAM, collecte, SOC.
+- [arc-kubeorchestrator](https://github.com/arckit-iam/arc-kubeorchestrator/tree/main/docs) : déploiement, Helm, Flux et CI/CD.
