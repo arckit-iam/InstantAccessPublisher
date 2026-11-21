@@ -1,0 +1,103 @@
+# SPDX-FileCopyrightText: 2026 Dédale Solutions
+# SPDX-License-Identifier: EUPL-1.2
+
+# Démonstration locale de la chaîne ARC, sans Active Directory ni Kubernetes.
+# Les composants sont construits depuis leurs dépôts publics ; l'agent AD
+# tourne en mode simulation (dry-run) et ne contacte aucun annuaire.
+# Usage : voir la section « Démarrage rapide » du README.
+
+name: arc-demo
+
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.3.1
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --memory=512M
+      - --kafka-addr=internal://0.0.0.0:9092
+      - --advertise-kafka-addr=internal://redpanda:9092
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  topics-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.3.1
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["rpk", "-X", "brokers=redpanda:9092", "topic", "create"]
+    command:
+      - arc
+      - iam.raw.activedirectory
+      - iam.raw.isds
+      - arc.sync.identity
+      - arc.sync.entitlement
+      - arc.sync.assignment
+      - arc.provisioning.identity
+      - arc.provisioning.entitlement
+      - arc.provisioning.assignment
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: arc_publisher
+      POSTGRES_USER: arc
+      POSTGRES_PASSWORD: arc
+    volumes:
+      # Copie du schéma de arc-publisher (src/main/resources/db/init.sql)
+      - ./postgres-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arc -d arc_publisher"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  arc-consolidator:
+    build: https://github.com/arckit-iam/arc-consolidator.git#main
+    depends_on:
+      topics-init:
+        condition: service_completed_successfully
+    environment:
+      SPRING_KAFKA_CONSUMER_BOOTSTRAP_SERVERS: redpanda:9092
+      SPRING_KAFKA_PRODUCER_BOOTSTRAP_SERVERS: redpanda:9092
+
+  arc-publisher:
+    build: https://github.com/arckit-iam/arc-publisher.git#main
+    depends_on:
+      topics-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/arc_publisher
+      SPRING_DATASOURCE_USERNAME: arc
+      SPRING_DATASOURCE_PASSWORD: arc
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+    ports:
+      # L'API n'a pas d'authentification : exposition locale uniquement.
+      - "127.0.0.1:8081:8081"
+
+  arc-agent-ad:
+    build: https://github.com/arckit-iam/arc-agent-ad.git#main
+    depends_on:
+      topics-init:
+        condition: service_completed_successfully
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      TARGET_SYSTEM: ad://AD01
+      ARC_AGENT_DRY_RUN: "true"
+      # Valeurs fictives : inutilisées en mode simulation.
+      AD_URL: ldaps://ad.example.com:636
+      AD_BASE_DN: dc=example,dc=com
+      AD_BIND_DN: cn=svc-arc,ou=Services,dc=example,dc=com
+      AD_BIND_PASSWORD: unused
+      AD_USERS_OU: ou=Users,dc=example,dc=com
+      AD_TIER0_OU: ou=Tier0,dc=example,dc=com
+      AD_TIER1_OU: ou=Tier1,dc=example,dc=com
+      AD_TIER2_OU: ou=Tier2,dc=example,dc=com

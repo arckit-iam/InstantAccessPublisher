@@ -99,6 +99,47 @@ Un agent est un composant autonome déployé côté système cible. Il consomme 
 
 ---
 
+## Démarrage rapide
+
+Un `docker compose` de démonstration ([`demo/`](demo/)) lance toute la chaîne en local : Redpanda, PostgreSQL, `arc-consolidator`, `arc-publisher` et `arc-agent-ad`. L'agent tourne en mode **dry-run** : il journalise les opérations sans toucher à un Active Directory, aucun AD n'est donc nécessaire.
+
+Prérequis : Docker avec Compose v2. Les trois services sont construits depuis leurs dépôts GitHub publics (le premier démarrage prend quelques minutes).
+
+```bash
+# 1. Démarrer la pile
+docker compose -f demo/docker-compose.yml up -d --build
+
+# 2. Injecter un événement brut Active Directory (création de compte, EventID 4720)
+docker compose -f demo/docker-compose.yml exec -T redpanda \
+  rpk topic produce iam.raw.activedirectory < demo/ad-event.jsonl
+
+# 3. Lire l'événement normalisé produit par arc-consolidator
+docker compose -f demo/docker-compose.yml exec -T redpanda \
+  rpk topic consume arc.sync.identity -o start -n 1
+
+# 4. Créer un job de provisioning (API arc-publisher, locale uniquement)
+curl -X POST http://127.0.0.1:8081/jobs -H 'Content-Type: application/json' -d '{
+  "action": "CREATE",
+  "targetType": "IDENTITY",
+  "identityId": "jdoe",
+  "identityName": "John Doe",
+  "targetSystem": "ad://AD01",
+  "executeAt": "2020-01-01T00:00:00Z"
+}'
+
+# 5. Constater l'exécution par l'agent (lignes [DRY-RUN])
+docker compose -f demo/docker-compose.yml logs arc-agent-ad | grep DRY-RUN
+
+# 6. Tout arrêter et supprimer les données
+docker compose -f demo/docker-compose.yml down -v
+```
+
+Sous PowerShell, remplacer l'étape 2 par `Get-Content demo/ad-event.jsonl | docker compose -f demo/docker-compose.yml exec -T redpanda rpk topic produce iam.raw.activedirectory`.
+
+> Cette démonstration est destinée à un usage local : l'API n'est pas authentifiée (elle n'écoute que sur `127.0.0.1`), les identifiants sont fictifs et rien n'est durci pour la production.
+
+---
+
 ## Intégration et déploiement
 
 Le déploiement GitOps (Helm, FluxCD) est géré dans un dépôt privé. L'intégration et la mise en production de la plateforme sont proposées par Dédale Solutions en **service payant** : pour en discuter, contactez-nous à [etiennsalle@gmail.com](mailto:etiennsalle@gmail.com).
