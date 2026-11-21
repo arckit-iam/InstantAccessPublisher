@@ -1,6 +1,0 @@
----
-apiVersion: v2
-name: arc-gateway
-version: 0.1.0
-description: ARC Gateway — BFF with Kerberos/SPNEGO authentication
-appVersion: "1.0.0"

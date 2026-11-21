@@ -8,7 +8,7 @@
   "kafka": {
     "mode": "ssh-rpk",
     "sshPath": "C:/Windows/System32/OpenSSH/ssh.exe",
-    "sshHost": "ubuntu@arckit.fr",
+    "sshHost": "user@kafka.example.com",
     "sshOptions": [
       "-o", "BatchMode=yes",
       "-o", "ConnectTimeout=8",

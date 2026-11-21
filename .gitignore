@@ -28,6 +28,11 @@ Thumbs.db
 # ---- Logs -------------------------------------------------
 *.log
 logs/
-arc-consolidator/*
-arc-publisher/*
-arc-agent-ad/*
+arc-consolidator/
+arc-publisher/
+arc-agent-ad/
+arc-kubeorchestrator/
+arc-gateway/
+arc-gateway-frontend-node/
+arc-docs/
+profile/
