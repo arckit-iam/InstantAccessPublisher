@@ -37,12 +37,26 @@ services:
       - arc
       - iam.raw.activedirectory
       - iam.raw.isds
+      - iam.raw.ldap
       - arc.sync.identity
       - arc.sync.entitlement
       - arc.sync.assignment
       - arc.provisioning.identity
       - arc.provisioning.entitlement
       - arc.provisioning.assignment
+
+  topics-init-compacted:
+    # Topic du curseur de reprise de la collecte LDAP : seule la dernière valeur par clé est conservée.
+    image: docker.redpanda.com/redpandadata/redpanda:v24.3.1
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["rpk", "-X", "brokers=redpanda:9092", "topic", "create"]
+    command:
+      - -c
+      - cleanup.policy=compact
+      - iam.raw.ldap.cursor
 
   postgres:
     image: postgres:16-alpine
@@ -131,12 +145,15 @@ services:
     depends_on:
       topics-init:
         condition: service_completed_successfully
+      topics-init-compacted:
+        condition: service_completed_successfully
       apacheds:
         condition: service_healthy
     environment:
       SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
       TARGET_SYSTEM: ldap://LDAP01
       ARC_AGENT_DRY_RUN: "false"
+      ARC_AGENT_COLLECTION_ENABLED: "true"
       ARC_AGENT_LDAP_URL: ldap://apacheds:10389
       ARC_AGENT_LDAP_BASE_DN: dc=arc,dc=local
       ARC_AGENT_LDAP_BIND_DN: uid=admin,ou=system
