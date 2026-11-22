@@ -34,7 +34,7 @@ Instant Access Provider (IAP) est une plateforme open source qui collecte, norma
 | [`arc-consolidator`](https://github.com/arckit-iam/arc-consolidator) | Consomme les événements bruts (`iam.raw.*`), les normalise et publie sur `arc.sync.*` |
 | [`arc-publisher`](https://github.com/arckit-iam/arc-publisher) | Planifie les jobs de provisioning (REST + PostgreSQL) et publie les commandes sur `arc.provisioning.*` |
 | [`arc-agent-ad`](https://github.com/arckit-iam/arc-agent-ad) | Consomme `arc.provisioning.*` et exécute les opérations dans Active Directory |
-| [`arc-agent-openldap`](https://github.com/arckit-iam/arc-agent-openldap) | Consomme `arc.provisioning.*` et exécute les opérations dans un annuaire LDAP (OpenLDAP, Apache DS) |
+| [`arc-agent-openldap`](https://github.com/arckit-iam/arc-agent-openldap) | Consomme `arc.provisioning.*` et exécute les opérations dans un annuaire LDAP (OpenLDAP, Apache DS) ; publie en temps réel les changements de l'annuaire sur `iam.raw.ldap` |
 | [`product-manager`](https://github.com/arckit-iam/product-manager) (dossier `profile`) | Service métier : produits, profils et permissions. Appelle `arc-publisher` pour créer ou supprimer le groupe AD associé à un profil |
 | [`arc-docs`](https://github.com/arckit-iam/arc-docs) | Documentation d'architecture, modèle abstrait, collecte, SOC |
 
@@ -137,7 +137,7 @@ docker compose -f demo/docker-compose.yml down -v
 
 Sous PowerShell, remplacer l'étape 2 par `Get-Content demo/ad-event.jsonl | docker compose -f demo/docker-compose.yml exec -T redpanda rpk topic produce iam.raw.activedirectory`.
 
-Pour provisionner l'annuaire LDAP local, envoyer les jobs avec `"targetSystem": "ldap://LDAP01"` (`targetType` `IDENTITY`, `ENTITLEMENT` pour un groupe, `ASSIGNMENT` pour l'ajout d'une identité à un groupe ; `entitlementId` est le `cn` du groupe), puis relire le résultat :
+Pour provisionner l'annuaire LDAP local, envoyer les jobs avec `"targetSystem": "ldap://LDAP01"` (`targetType` `IDENTITY`, `ENTITLEMENT` pour un groupe, `ASSIGNMENT` pour l'ajout d'une identité à un groupe ; `entitlementId` est le `cn` du groupe), puis relire le résultat (une identité déjà présente dans l'annuaire, comme `alice` ou `bob` du jeu de données initial, n'est pas recréée) :
 
 ```bash
 docker compose -f demo/docker-compose.yml exec -T apacheds ldapsearch -x -LLL \
