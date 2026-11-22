@@ -196,13 +196,29 @@ services:
       ARC_AUTH_PASSWORD: arc-demo-service
       ARC_PUBLISHER_URL: http://arc-publisher:8081
       ARC_PUBLISHER_TARGET_SYSTEM: ldap://LDAP01
-      # Comptes utilisateurs : le compte s'écrit comme l'identifiant de l'identité (alice, bob).
-      ARC_ACCOUNTS_TYPES_0_NAME: employee
+      # Matricules générés au format I<DDDDDD> ; comptes standard : I<DDDDDD>, comptes admin : A<DDDDDD>.
+      ARC_ACCOUNTS_TYPES_0_NAME: standard
       ARC_ACCOUNTS_TYPES_0_KIND: USER
-      ARC_ACCOUNTS_TYPES_0_PATTERN: (?<identity>[a-z]+)
-      ARC_ACCOUNTS_TYPES_0_METADATA_0_NAME: department
-      ARC_ACCOUNTS_TYPES_0_METADATA_0_TYPE: STRING
-      ARC_ACCOUNTS_TYPES_0_METADATA_0_REQUIRED: "false"
+      ARC_ACCOUNTS_TYPES_0_PATTERN: (?<identity>I\d{6})
+      ARC_ACCOUNTS_TYPES_0_IDENTIFIERTEMPLATE: "{identity}"
+      ARC_ACCOUNTS_TYPES_1_NAME: admin
+      ARC_ACCOUNTS_TYPES_1_KIND: USER
+      ARC_ACCOUNTS_TYPES_1_PATTERN: A(?<number>\d{6})
+      ARC_ACCOUNTS_TYPES_1_IDENTITYTEMPLATE: "I{number}"
+      ARC_ACCOUNTS_TYPES_1_IDENTIFIERTEMPLATE: "A{number}"
+      ARC_ACCOUNTS_TYPES_1_METADATA_0_NAME: department
+      ARC_ACCOUNTS_TYPES_1_METADATA_0_TYPE: STRING
+      ARC_ACCOUNTS_TYPES_1_METADATA_0_REQUIRED: "false"
+      # Types de contrat des identités.
+      ARC_CONTRACTS_TYPES_0_NAME: employee
+      ARC_CONTRACTS_TYPES_0_METADATA_0_NAME: department
+      ARC_CONTRACTS_TYPES_0_METADATA_0_TYPE: STRING
+      ARC_CONTRACTS_TYPES_0_METADATA_0_REQUIRED: "false"
+      ARC_CONTRACTS_TYPES_1_NAME: contractor
+      ARC_CONTRACTS_TYPES_1_METADATA_0_NAME: company
+      ARC_CONTRACTS_TYPES_1_METADATA_0_TYPE: STRING
+      ARC_CONTRACTS_TYPES_1_METADATA_0_REQUIRED: "true"
+      ARC_CONTRACTS_TYPES_2_NAME: intern
       ARC_DISCOVERY_ENABLED: "true"
       SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
     ports:
