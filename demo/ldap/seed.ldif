@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: 2026 Dédale Solutions
+# SPDX-License-Identifier: EUPL-1.2
+#
+# Données initiales de l'annuaire de démonstration (Apache DS).
+# Importé une seule fois, au premier démarrage du volume.
+# Les branches ou=people et ou=groups sont créées par l'image (dc=arc,dc=local).
+
+dn: uid=alice,ou=people,dc=arc,dc=local
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: inetOrgPerson
+uid: alice
+cn: Alice Martin
+sn: Martin
+givenName: Alice
+mail: alice@arc.local
+
+dn: uid=bob,ou=people,dc=arc,dc=local
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: inetOrgPerson
+uid: bob
+cn: Bob Durand
+sn: Durand
+givenName: Bob
+mail: bob@arc.local
+
+dn: cn=arc-admins,ou=groups,dc=arc,dc=local
+objectClass: top
+objectClass: groupOfNames
+cn: arc-admins
+description: Administrateurs ARC
+member: uid=alice,ou=people,dc=arc,dc=local
+
+dn: cn=arc-readers,ou=groups,dc=arc,dc=local
+objectClass: top
+objectClass: groupOfNames
+cn: arc-readers
+description: Lecteurs ARC
+member: uid=alice,ou=people,dc=arc,dc=local
+member: uid=bob,ou=people,dc=arc,dc=local

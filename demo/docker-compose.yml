@@ -3,7 +3,8 @@
 
 # Démonstration locale de la chaîne ARC, sans Active Directory ni Kubernetes.
 # Les composants utilisent les images stables publiées sur GHCR ; l'agent AD
-# tourne en mode simulation (dry-run) et ne contacte aucun annuaire.
+# tourne en mode simulation (dry-run) et ne contacte aucun annuaire. L'agent
+# OpenLDAP, lui, écrit réellement dans un Apache DS local.
 # Usage : voir la section « Démarrage rapide » du README.
 
 name: arc-demo
@@ -104,3 +105,41 @@ services:
       AD_TIER0_OU: ou=Tier0,dc=example,dc=com
       AD_TIER1_OU: ou=Tier1,dc=example,dc=com
       AD_TIER2_OU: ou=Tier2,dc=example,dc=com
+
+  apacheds:
+    # Annuaire LDAP de démonstration (Apache Directory Server, licence Apache-2.0).
+    # Les entrées de ./ldap/seed.ldif sont importées au premier démarrage.
+    image: tgbyte/apacheds:2.0.0.AM27
+    environment:
+      APACHEDS_ADMIN_PASSWORD: arc-demo-admin
+      APACHEDS_DOMAIN_NAME: arc
+      APACHEDS_DOMAIN_SUFFIX: local
+    volumes:
+      - ./ldap/seed.ldif:/ldif.d/10-seed.ldif:ro
+    healthcheck:
+      test: ["CMD-SHELL", "ldapsearch -x -H ldap://localhost:10389 -D uid=admin,ou=system -w arc-demo-admin -b cn=arc-readers,ou=groups,dc=arc,dc=local -s base dn | grep -q '^dn:'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    ports:
+      # Compte administrateur de démonstration : exposition locale uniquement.
+      - "127.0.0.1:10389:10389"
+
+  arc-agent-openldap:
+    image: ghcr.io/arckit-iam/arc-agent-openldap:stable
+    platform: linux/amd64
+    depends_on:
+      topics-init:
+        condition: service_completed_successfully
+      apacheds:
+        condition: service_healthy
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      TARGET_SYSTEM: ldap://LDAP01
+      ARC_AGENT_DRY_RUN: "false"
+      ARC_AGENT_LDAP_URL: ldap://apacheds:10389
+      ARC_AGENT_LDAP_BASE_DN: dc=arc,dc=local
+      ARC_AGENT_LDAP_BIND_DN: uid=admin,ou=system
+      ARC_AGENT_LDAP_BIND_PASSWORD: arc-demo-admin
+      ARC_AGENT_LDAP_USERS_OU: ou=people
+      ARC_AGENT_LDAP_GROUPS_OU: ou=groups
