@@ -8,6 +8,9 @@
 # MOTS DE PASSE DE DÉMONSTRATION, PUBLICS : ne jamais les reprendre hors de cette démo.
 #   alice / arc-demo-alice  (arc-admins, arc-readers)  -> rôles ARC_ADMIN, ARC_READER
 #   bob   / arc-demo-bob    (arc-readers)              -> rôle ARC_READER
+#   svc-product-manager, svc-identity-manager (arc-publishers) -> rôle ARC_PUBLISHER
+#     comptes de service des deux gestionnaires, mot de passe arc-demo-service
+#   svc-payroll-batch : compte de service d'un produit (comptes non utilisateurs)
 
 dn: uid=alice,ou=people,dc=arc,dc=local
 objectClass: top
@@ -47,3 +50,41 @@ cn: arc-readers
 description: Lecteurs ARC
 member: uid=alice,ou=people,dc=arc,dc=local
 member: uid=bob,ou=people,dc=arc,dc=local
+
+dn: uid=svc-product-manager,ou=people,dc=arc,dc=local
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: inetOrgPerson
+uid: svc-product-manager
+cn: svc-product-manager
+sn: svc-product-manager
+userPassword: arc-demo-service
+
+dn: uid=svc-identity-manager,ou=people,dc=arc,dc=local
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: inetOrgPerson
+uid: svc-identity-manager
+cn: svc-identity-manager
+sn: svc-identity-manager
+userPassword: arc-demo-service
+
+dn: uid=svc-payroll-batch,ou=people,dc=arc,dc=local
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: inetOrgPerson
+uid: svc-payroll-batch
+cn: svc-payroll-batch
+sn: svc-payroll-batch
+userPassword: arc-demo-service
+
+dn: cn=arc-publishers,ou=groups,dc=arc,dc=local
+objectClass: top
+objectClass: groupOfNames
+cn: arc-publishers
+description: Publieurs ARC (comptes de service)
+member: uid=svc-product-manager,ou=people,dc=arc,dc=local
+member: uid=svc-identity-manager,ou=people,dc=arc,dc=local

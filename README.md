@@ -36,7 +36,9 @@ Instant Access Provider (IAP) est une plateforme open source qui collecte, norma
 | [`arc-auth`](https://github.com/arckit-iam/arc-auth) | Émet les jetons JWT (RS256, 15 minutes) après authentification dans l'annuaire LDAP / Active Directory ; publie les clés publiques (JWKS) |
 | [`arc-agent-ad`](https://github.com/arckit-iam/arc-agent-ad) | Consomme `arc.provisioning.*` et exécute les opérations dans Active Directory |
 | [`arc-agent-openldap`](https://github.com/arckit-iam/arc-agent-openldap) | Consomme `arc.provisioning.*` et exécute les opérations dans un annuaire LDAP (OpenLDAP, Apache DS) ; publie en temps réel les changements de l'annuaire sur `iam.raw.ldap` |
-| [`product-manager`](https://github.com/arckit-iam/product-manager) (dossier `profile`) | Service métier : produits, profils et permissions (API protégée par jeton JWT). Appelle `arc-publisher`, avec un compte de service, pour créer ou supprimer le groupe AD associé à un profil |
+| [`product-manager`](https://github.com/arckit-iam/product-manager) (dossier `profile`) | Service métier : produits, profils (groupes) et comptes non utilisateurs (comptes de service) rattachés aux produits. API protégée par jeton JWT. Appelle `arc-publisher`, avec un compte de service, pour créer ou supprimer les groupes et comptes associés |
+| [`identity-manager`](https://github.com/arckit-iam/identity-manager) | Service métier : identités humaines et comptes utilisateurs rattachés à une identité. Même modèle de sécurité et de types de compte que `product-manager` |
+| [`arc-console`](https://github.com/arckit-iam/arc-console) | Console web : connexion par jeton JWT (`arc-auth`), gestion des produits, profils, identités et comptes. Remplace `arc-gateway` et `arc-gateway-frontend-node` (abandonnés) |
 | [`arc-docs`](https://github.com/arckit-iam/arc-docs) | Documentation d'architecture, modèle abstrait, collecte, SOC |
 
 Le dossier [`agent/`](agent/) contient l'agent collecteur : il lit les événements à la source (WEF, DirSync/LDAP, webhook, syslog) et les publie sur `iam.raw.*`.
@@ -54,7 +56,11 @@ Sources IAM (AD, RACF, ...)
         v
   arc-consolidator  -->  arc.sync.identity | arc.sync.assignment | arc.sync.entitlement
 
-product-manager --POST /jobs--> arc-publisher --> arc.provisioning.identity
+arc-console --JWT--> product-manager / identity-manager
+                         ^  (comptes découverts, classés par expression régulière)
+                         |  arc.sync.identity
+
+product-manager / identity-manager --POST /jobs--> arc-publisher --> arc.provisioning.identity
                                               --> arc.provisioning.assignment
                                               --> arc.provisioning.entitlement
                                                          |
@@ -103,9 +109,9 @@ Un agent est un composant autonome déployé côté système cible. Il consomme 
 
 ## Démarrage rapide
 
-Un `docker compose` de démonstration ([`demo/`](demo/)) lance toute la chaîne en local : Redpanda, PostgreSQL, `arc-consolidator`, `arc-auth`, `arc-publisher`, `arc-agent-ad` et `arc-agent-openldap`. L'agent AD tourne en mode **dry-run** : il journalise les opérations sans toucher à un Active Directory, aucun AD n'est donc nécessaire. L'agent OpenLDAP écrit réellement dans un Apache Directory Server local (`dc=arc,dc=local`, `ou=people`, `ou=groups`) lancé par le même `docker compose`.
+Un `docker compose` de démonstration ([`demo/`](demo/)) lance toute la chaîne en local : Redpanda, PostgreSQL, `arc-consolidator`, `arc-auth`, `arc-publisher`, `product-manager`, `identity-manager`, `arc-console`, `arc-agent-ad` et `arc-agent-openldap`. L'agent AD tourne en mode **dry-run** : il journalise les opérations sans toucher à un Active Directory, aucun AD n'est donc nécessaire. L'agent OpenLDAP écrit réellement dans un Apache Directory Server local (`dc=arc,dc=local`, `ou=people`, `ou=groups`) lancé par le même `docker compose`.
 
-Prérequis : Docker avec Compose v2. Les services ARC utilisent les images stables publiées sur GHCR (`ghcr.io/arckit-iam/<service>:stable`, architecture `linux/amd64`, émulée sur les machines ARM).
+Prérequis : Docker avec Compose v2. Les services ARC utilisent les images stables publiées sur GHCR (`ghcr.io/arckit-iam/<service>:stable`, architecture `linux/amd64`, émulée sur les machines ARM). `product-manager`, `identity-manager` et `arc-console` sont, tant qu'aucune version stable n'est publiée, construits depuis leurs dépôts (`docker compose up -d --build` ; ajouter `COMPOSE_BAKE=false` si la construction échoue sur `bake`).
 
 ```bash
 # 1. Démarrer la pile
@@ -152,7 +158,9 @@ docker compose -f demo/docker-compose.yml exec -T apacheds ldapsearch -x -LLL \
   -b dc=arc,dc=local "(objectClass=groupOfNames)" dn member
 ```
 
-> Cette démonstration est destinée à un usage local : l'API n'écoute que sur `127.0.0.1`, sans TLS ; les identifiants et les mots de passe de `alice` et `bob` sont fictifs et publics, la clé de signature d'`arc-auth` est éphémère, et rien n'est durci pour la production.
+La console web est disponible sur http://127.0.0.1:3000 (connexion avec `alice` / `arc-demo-alice`). Elle permet de créer des produits et des profils, de gérer les identités et les comptes, et de suivre les comptes **découverts** dans l'annuaire : un compte ajouté dans l'annuaire apparaît (sous 30 secondes environ) dans `product-manager` s'il correspond au motif des comptes de service (`svc-<produit>-<usage>`) ou dans `identity-manager` s'il correspond au motif des comptes utilisateurs. Les types de compte, leur motif et leurs champs de métadonnées sont définis par la configuration (variables `ARC_ACCOUNTS_TYPES_*`). Les comptes de service `svc-product-manager` et `svc-identity-manager` (mot de passe `arc-demo-service`, groupe `arc-publishers`) sont fictifs et publics.
+
+> Cette démonstration est destinée à un usage local : l'API n'écoute que sur `127.0.0.1`, sans TLS ; les identifiants et les mots de passe de `alice`, `bob` et des comptes de service sont fictifs et publics, la clé de signature d'`arc-auth` est éphémère, et rien n'est durci pour la production.
 
 ---
 

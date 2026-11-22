@@ -67,6 +67,8 @@ services:
     volumes:
       # Copie du schéma de arc-publisher (src/main/resources/db/init.sql)
       - ./postgres-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      # Bases de product-manager et identity-manager
+      - ./postgres-databases.sql:/docker-entrypoint-initdb.d/00-databases.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U arc -d arc_publisher"]
       interval: 5s
@@ -125,6 +127,103 @@ services:
       # Démonstration : exposition locale uniquement (pas de TLS).
       - "127.0.0.1:8081:8081"
 
+  product-manager:
+    # Produits, profils (groupes) et comptes de service. Construit depuis les sources tant qu'aucune
+    # image stable n'est publiée ; remplacer par ghcr.io/arckit-iam/product-manager:stable ensuite.
+    build:
+      context: https://github.com/arckit-iam/product-manager.git#main
+    image: arc-demo/product-manager:local
+    depends_on:
+      topics-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      arc-auth:
+        condition: service_started
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/product_manager
+      SPRING_DATASOURCE_USERNAME: arc
+      SPRING_DATASOURCE_PASSWORD: arc
+      SPRING_FLYWAY_URL: jdbc:postgresql://postgres:5432/product_manager
+      SPRING_FLYWAY_USER: arc
+      SPRING_FLYWAY_PASSWORD: arc
+      ARC_SECURITY_ISSUER_URI: http://arc-auth:8082
+      ARC_SECURITY_JWK_SET_URI: http://arc-auth:8082/.well-known/jwks.json
+      ARC_AUTH_URL: http://arc-auth:8082
+      ARC_AUTH_USERNAME: svc-product-manager
+      ARC_AUTH_PASSWORD: arc-demo-service
+      ARC_PUBLISHER_URL: http://arc-publisher:8081
+      ARC_PUBLISHER_TARGET_SYSTEM: ldap://LDAP01
+      # Comptes de service : le nom du produit est extrait du nom du compte (svc-<produit>-<usage>).
+      ARC_ACCOUNTS_TYPES_0_NAME: service-account
+      ARC_ACCOUNTS_TYPES_0_KIND: NON_USER
+      ARC_ACCOUNTS_TYPES_0_PATTERN: svc-(?<product>[a-z0-9]+)-[a-z0-9]+
+      ARC_ACCOUNTS_TYPES_0_METADATA_0_NAME: owner
+      ARC_ACCOUNTS_TYPES_0_METADATA_0_TYPE: STRING
+      ARC_ACCOUNTS_TYPES_0_METADATA_0_REQUIRED: "false"
+      # Découverte des comptes depuis l'annuaire collecté (topic arc.sync.identity).
+      ARC_DISCOVERY_ENABLED: "true"
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+    ports:
+      # Démonstration : exposition locale uniquement (pas de TLS).
+      - "127.0.0.1:8080:8080"
+
+  identity-manager:
+    # Identités humaines et comptes utilisateurs. Même remarque que product-manager.
+    build:
+      context: https://github.com/arckit-iam/identity-manager.git#main
+    image: arc-demo/identity-manager:local
+    depends_on:
+      topics-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      arc-auth:
+        condition: service_started
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/identity_manager
+      SPRING_DATASOURCE_USERNAME: arc
+      SPRING_DATASOURCE_PASSWORD: arc
+      SPRING_FLYWAY_URL: jdbc:postgresql://postgres:5432/identity_manager
+      SPRING_FLYWAY_USER: arc
+      SPRING_FLYWAY_PASSWORD: arc
+      ARC_SECURITY_ISSUER_URI: http://arc-auth:8082
+      ARC_SECURITY_JWK_SET_URI: http://arc-auth:8082/.well-known/jwks.json
+      ARC_AUTH_URL: http://arc-auth:8082
+      ARC_AUTH_USERNAME: svc-identity-manager
+      ARC_AUTH_PASSWORD: arc-demo-service
+      ARC_PUBLISHER_URL: http://arc-publisher:8081
+      ARC_PUBLISHER_TARGET_SYSTEM: ldap://LDAP01
+      # Comptes utilisateurs : le compte s'écrit comme l'identifiant de l'identité (alice, bob).
+      ARC_ACCOUNTS_TYPES_0_NAME: employee
+      ARC_ACCOUNTS_TYPES_0_KIND: USER
+      ARC_ACCOUNTS_TYPES_0_PATTERN: (?<identity>[a-z]+)
+      ARC_ACCOUNTS_TYPES_0_METADATA_0_NAME: department
+      ARC_ACCOUNTS_TYPES_0_METADATA_0_TYPE: STRING
+      ARC_ACCOUNTS_TYPES_0_METADATA_0_REQUIRED: "false"
+      ARC_DISCOVERY_ENABLED: "true"
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+    ports:
+      - "127.0.0.1:8083:8083"
+
+  arc-console:
+    # Console web : connexion par jeton JWT (arc-auth), puis gestion des produits et des identités.
+    build:
+      context: https://github.com/arckit-iam/arc-console.git#main
+    image: arc-demo/arc-console:local
+    depends_on:
+      - arc-auth
+      - product-manager
+      - identity-manager
+    environment:
+      ARC_AUTH_URL: http://arc-auth:8082
+      ARC_PRODUCT_MANAGER_URL: http://product-manager:8080
+      ARC_IDENTITY_MANAGER_URL: http://identity-manager:8083
+    ports:
+      # Démonstration : exposition locale uniquement (pas de TLS).
+      - "127.0.0.1:3000:3000"
   arc-agent-ad:
     image: ghcr.io/arckit-iam/arc-agent-ad:stable
     platform: linux/amd64
