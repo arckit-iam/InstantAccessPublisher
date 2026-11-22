@@ -82,6 +82,9 @@ services:
     environment:
       SPRING_KAFKA_CONSUMER_BOOTSTRAP_SERVERS: redpanda:9092
       SPRING_KAFKA_PRODUCER_BOOTSTRAP_SERVERS: redpanda:9092
+      IAM_TOPICS_LDAP: iam.raw.ldap
+      # Membre technique des groupes LDAP (compte de liaison de l'agent), sans assignation associee
+      IAM_LDAP_IGNORED_MEMBERS: uid=admin,ou=system
 
   arc-publisher:
     image: ghcr.io/arckit-iam/arc-publisher:stable
