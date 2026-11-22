@@ -44,6 +44,9 @@ services:
       - arc.provisioning.identity
       - arc.provisioning.entitlement
       - arc.provisioning.assignment
+      # Ordres de provisioning émis par les managers, consommés par arc-publisher (+ rejets).
+      - arc.orders
+      - arc.orders.DLT
 
   topics-init-compacted:
     # Topic du curseur de reprise de la collecte LDAP : seule la dernière valeur par clé est conservée.
@@ -120,6 +123,9 @@ services:
       SPRING_DATASOURCE_USERNAME: arc
       SPRING_DATASOURCE_PASSWORD: arc
       SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      # Ordres reçus par l'API REST (/orders) et par le topic arc.orders (managers).
+      ARC_PUBLISHER_MODE: both
+      ARC_ORDERS_TOPIC: arc.orders
       # L'API exige un jeton émis par arc-auth (les clés sont récupérées à la demande).
       ARC_SECURITY_ISSUER_URI: http://arc-auth:8082
       ARC_SECURITY_JWK_SET_URI: http://arc-auth:8082/.well-known/jwks.json
@@ -155,6 +161,9 @@ services:
       ARC_AUTH_PASSWORD: arc-demo-service
       ARC_PUBLISHER_URL: http://arc-publisher:8081
       ARC_PUBLISHER_TARGET_SYSTEM: ldap://LDAP01
+      # Ordres publiés sur le topic arc.orders (canal api : POST /orders sur arc-publisher).
+      ARC_ORDERS_CHANNEL: kafka
+      ARC_ORDERS_TOPIC: arc.orders
       # Comptes de service : le nom du produit est extrait du nom du compte (svc-<produit>-<usage>).
       ARC_ACCOUNTS_TYPES_0_NAME: service-account
       ARC_ACCOUNTS_TYPES_0_KIND: NON_USER
@@ -196,6 +205,9 @@ services:
       ARC_AUTH_PASSWORD: arc-demo-service
       ARC_PUBLISHER_URL: http://arc-publisher:8081
       ARC_PUBLISHER_TARGET_SYSTEM: ldap://LDAP01
+      # Ordres publiés sur le topic arc.orders (canal api : POST /orders sur arc-publisher).
+      ARC_ORDERS_CHANNEL: kafka
+      ARC_ORDERS_TOPIC: arc.orders
       # Matricules générés au format I<DDDDDD> ; comptes standard : I<DDDDDD>, comptes admin : A<DDDDDD>.
       ARC_ACCOUNTS_TYPES_0_NAME: standard
       ARC_ACCOUNTS_TYPES_0_KIND: USER
@@ -256,6 +268,10 @@ services:
       AD_BIND_DN: cn=svc-arc,ou=Services,dc=example,dc=com
       AD_BIND_PASSWORD: unused
       AD_USERS_OU: ou=Users,dc=example,dc=com
+      # Type de compte -> OU cible (les managers n'envoient que le type de compte).
+      AD_ACCOUNT_TYPE_STANDARD_OU: ou=Tier2,dc=example,dc=com
+      AD_ACCOUNT_TYPE_ADMIN_OU: ou=Tier0,dc=example,dc=com
+      AD_ACCOUNT_TYPE_SERVICE_ACCOUNT_OU: ou=Tier1,dc=example,dc=com
       AD_TIER0_OU: ou=Tier0,dc=example,dc=com
       AD_TIER1_OU: ou=Tier1,dc=example,dc=com
       AD_TIER2_OU: ou=Tier2,dc=example,dc=com
@@ -299,4 +315,8 @@ services:
       ARC_AGENT_LDAP_BIND_DN: uid=admin,ou=system
       ARC_AGENT_LDAP_BIND_PASSWORD: arc-demo-admin
       ARC_AGENT_LDAP_USERS_OU: ou=people
+      # Type de compte -> branche (les managers n'envoient que le type de compte).
+      ARC_AGENT_LDAP_ACCOUNT_TYPE_STANDARD_OU: ou=people
+      ARC_AGENT_LDAP_ACCOUNT_TYPE_ADMIN_OU: ou=people
+      ARC_AGENT_LDAP_ACCOUNT_TYPE_SERVICE_ACCOUNT_OU: ou=people
       ARC_AGENT_LDAP_GROUPS_OU: ou=groups
