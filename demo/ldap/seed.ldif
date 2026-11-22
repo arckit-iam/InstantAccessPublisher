@@ -4,6 +4,10 @@
 # Données initiales de l'annuaire de démonstration (Apache DS).
 # Importé une seule fois, au premier démarrage du volume.
 # Les branches ou=people et ou=groups sont créées par l'image (dc=arc,dc=local).
+#
+# MOTS DE PASSE DE DÉMONSTRATION, PUBLICS : ne jamais les reprendre hors de cette démo.
+#   alice / arc-demo-alice  (arc-admins, arc-readers)  -> rôles ARC_ADMIN, ARC_READER
+#   bob   / arc-demo-bob    (arc-readers)              -> rôle ARC_READER
 
 dn: uid=alice,ou=people,dc=arc,dc=local
 objectClass: top
@@ -15,6 +19,7 @@ cn: Alice Martin
 sn: Martin
 givenName: Alice
 mail: alice@arc.local
+userPassword: arc-demo-alice
 
 dn: uid=bob,ou=people,dc=arc,dc=local
 objectClass: top
@@ -26,6 +31,7 @@ cn: Bob Durand
 sn: Durand
 givenName: Bob
 mail: bob@arc.local
+userPassword: arc-demo-bob
 
 dn: cn=arc-admins,ou=groups,dc=arc,dc=local
 objectClass: top

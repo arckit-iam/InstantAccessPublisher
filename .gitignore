@@ -30,6 +30,7 @@ Thumbs.db
 logs/
 arc-consolidator/
 arc-publisher/
+arc-auth/
 arc-agent-ad/
 arc-agent-openldap/
 arc-kubeorchestrator/

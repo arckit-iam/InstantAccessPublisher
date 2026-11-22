@@ -86,6 +86,25 @@ services:
       # Membre technique des groupes LDAP (compte de liaison de l'agent), sans assignation associee
       IAM_LDAP_IGNORED_MEMBERS: uid=admin,ou=system
 
+  arc-auth:
+    # Émet les jetons JWT à partir des comptes de l'annuaire. Clé de signature éphémère
+    # (régénérée à chaque démarrage) : démonstration uniquement.
+    image: ghcr.io/arckit-iam/arc-auth:stable
+    platform: linux/amd64
+    depends_on:
+      apacheds:
+        condition: service_healthy
+    environment:
+      ARC_AUTH_JWT_ISSUER: http://arc-auth:8082
+      ARC_AUTH_LDAP_URL: ldap://apacheds:10389
+      ARC_AUTH_LDAP_MANAGER_DN: uid=admin,ou=system
+      ARC_AUTH_LDAP_MANAGER_PASSWORD: arc-demo-admin
+      ARC_AUTH_LDAP_USER_SEARCH_BASE: ou=people,dc=arc,dc=local
+      ARC_AUTH_LDAP_GROUP_SEARCH_BASE: ou=groups,dc=arc,dc=local
+    ports:
+      # Démonstration : exposition locale uniquement (pas de TLS).
+      - "127.0.0.1:8082:8082"
+
   arc-publisher:
     image: ghcr.io/arckit-iam/arc-publisher:stable
     platform: linux/amd64
@@ -99,8 +118,11 @@ services:
       SPRING_DATASOURCE_USERNAME: arc
       SPRING_DATASOURCE_PASSWORD: arc
       SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      # L'API exige un jeton émis par arc-auth (les clés sont récupérées à la demande).
+      ARC_SECURITY_ISSUER_URI: http://arc-auth:8082
+      ARC_SECURITY_JWK_SET_URI: http://arc-auth:8082/.well-known/jwks.json
     ports:
-      # L'API n'a pas d'authentification : exposition locale uniquement.
+      # Démonstration : exposition locale uniquement (pas de TLS).
       - "127.0.0.1:8081:8081"
 
   arc-agent-ad:
